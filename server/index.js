@@ -5,6 +5,7 @@ import metaRoutes from './routes/meta.js'
 import hublaRoutes from './routes/hubla.js'
 import pagtrustRoutes from './routes/pagtrust.js'
 import attributionRoutes from './routes/attribution.js'
+import importRoutes from './routes/import.js'
 
 dotenv.config()
 
@@ -19,6 +20,7 @@ app.use('/api/meta', metaRoutes)
 app.use('/api/hubla', hublaRoutes)
 app.use('/api/pagtrust', pagtrustRoutes)
 app.use('/api/attribution', attributionRoutes)
+app.use('/api/import', importRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => {

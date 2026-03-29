@@ -14,7 +14,13 @@ async function apiFetch(endpoint) {
 }
 
 export async function checkHealth() {
-  return apiFetch('/health')
+  try {
+    const res = await fetch(`${API_BASE}/health`)
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
 }
 
 // Meta Ads

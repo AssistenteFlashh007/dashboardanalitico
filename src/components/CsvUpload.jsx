@@ -1,0 +1,113 @@
+import { useState } from 'react'
+import { Upload, CheckCircle, AlertCircle } from 'lucide-react'
+
+export default function CsvUpload({ onImported }) {
+  const [uploading, setUploading] = useState(false)
+  const [result, setResult] = useState(null)
+  const [platform, setPlatform] = useState('hubla')
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    setResult(null)
+
+    try {
+      const content = await file.text()
+      const res = await fetch(`/api/import/csv?platform=${platform}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/csv' },
+        body: content,
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        setResult({
+          success: true,
+          message: `${data.data.imported} vendas importadas, ${data.data.skipped} puladas`,
+          details: data.data,
+        })
+        onImported?.()
+      } else {
+        setResult({ success: false, message: data.error })
+      }
+    } catch (err) {
+      setResult({ success: false, message: err.message })
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  return (
+    <div className="bg-dark-card rounded-2xl p-5 border border-dark-border">
+      <h3 className="text-lg font-semibold text-text-primary mb-2">Importar Vendas (CSV)</h3>
+      <p className="text-xs text-text-secondary mb-4">
+        Exporte o CSV da Hubla ou Pagtrust e faça upload para cruzar vendas antigas com campanhas do Meta Ads
+      </p>
+
+      <div className="flex items-center gap-3">
+        {/* Seletor de plataforma */}
+        <div className="flex bg-dark rounded-lg border border-dark-border p-0.5">
+          {['hubla', 'pagtrust'].map(p => (
+            <button
+              key={p}
+              onClick={() => setPlatform(p)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                platform === p
+                  ? 'bg-primary text-white'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {/* Upload */}
+        <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors ${
+          uploading
+            ? 'bg-dark-border/50 border-dark-border text-text-secondary cursor-wait'
+            : 'bg-primary/10 border-primary/30 text-primary-light hover:bg-primary/20'
+        }`}>
+          <Upload className="w-4 h-4" />
+          <span className="text-sm font-medium">
+            {uploading ? 'Importando...' : 'Selecionar CSV'}
+          </span>
+          <input
+            type="file"
+            accept=".csv,.txt"
+            onChange={handleUpload}
+            disabled={uploading}
+            className="hidden"
+          />
+        </label>
+      </div>
+
+      {/* Resultado */}
+      {result && (
+        <div className={`mt-3 p-3 rounded-lg flex items-start gap-2 ${
+          result.success
+            ? 'bg-success/10 border border-success/30'
+            : 'bg-danger/10 border border-danger/30'
+        }`}>
+          {result.success
+            ? <CheckCircle className="w-4 h-4 text-success mt-0.5" />
+            : <AlertCircle className="w-4 h-4 text-danger mt-0.5" />
+          }
+          <div>
+            <p className={`text-sm font-medium ${result.success ? 'text-success' : 'text-danger'}`}>
+              {result.message}
+            </p>
+            {result.details?.errors?.length > 0 && (
+              <p className="text-xs text-text-secondary mt-1">
+                Erros: {result.details.errors.join(', ')}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
