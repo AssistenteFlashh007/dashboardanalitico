@@ -1,5 +1,4 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { weeklyTraffic } from '../data/mockData'
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload) return null
@@ -11,12 +10,12 @@ const CustomTooltip = ({ active, payload, label }) => {
   )
 }
 
-export default function WeeklyChart() {
+export default function WeeklyChart({ data }) {
   return (
     <div className="bg-dark-card rounded-2xl p-5 border border-dark-border">
       <h3 className="text-lg font-semibold text-text-primary mb-4">Tráfego Semanal</h3>
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={weeklyTraffic}>
+        <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
           <XAxis dataKey="dia" stroke="#94a3b8" fontSize={12} />
           <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(1)}k`} />

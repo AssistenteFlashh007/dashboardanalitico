@@ -1,5 +1,4 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-import { trafficSources } from '../data/mockData'
 
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null
@@ -11,7 +10,7 @@ const CustomTooltip = ({ active, payload }) => {
   )
 }
 
-export default function SourcesChart() {
+export default function SourcesChart({ data }) {
   return (
     <div className="bg-dark-card rounded-2xl p-5 border border-dark-border">
       <h3 className="text-lg font-semibold text-text-primary mb-4">Fontes de Tráfego</h3>
@@ -19,7 +18,7 @@ export default function SourcesChart() {
         <ResponsiveContainer width="50%" height={220}>
           <PieChart>
             <Pie
-              data={trafficSources}
+              data={data}
               dataKey="valor"
               nameKey="fonte"
               cx="50%"
@@ -29,7 +28,7 @@ export default function SourcesChart() {
               paddingAngle={3}
               strokeWidth={0}
             >
-              {trafficSources.map((entry, i) => (
+              {data.map((entry, i) => (
                 <Cell key={i} fill={entry.cor} />
               ))}
             </Pie>
@@ -37,7 +36,7 @@ export default function SourcesChart() {
           </PieChart>
         </ResponsiveContainer>
         <div className="flex-1 space-y-3">
-          {trafficSources.map((source) => (
+          {data.map((source) => (
             <div key={source.fonte} className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: source.cor }} />

@@ -1,12 +1,10 @@
-import { campaignPerformance } from '../data/mockData'
-
 const statusStyles = {
   ativa: 'bg-success/15 text-success',
   pausada: 'bg-warning/15 text-warning',
   concluída: 'bg-text-secondary/15 text-text-secondary',
 }
 
-export default function CampaignTable() {
+export default function CampaignTable({ data }) {
   return (
     <div className="bg-dark-card rounded-2xl p-5 border border-dark-border">
       <h3 className="text-lg font-semibold text-text-primary mb-4">Performance de Campanhas</h3>
@@ -25,7 +23,7 @@ export default function CampaignTable() {
             </tr>
           </thead>
           <tbody>
-            {campaignPerformance.map((camp) => {
+            {data.map((camp) => {
               const roas = (camp.receita / camp.investido).toFixed(2)
               return (
                 <tr key={camp.nome} className="border-b border-dark-border/50 hover:bg-dark-border/20 transition-colors">

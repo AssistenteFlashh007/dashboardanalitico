@@ -1,5 +1,4 @@
 import { TrendingUp } from 'lucide-react'
-import { socialMediaMetrics } from '../data/mockData'
 
 const redeIcons = {
   Instagram: '📸',
@@ -8,12 +7,12 @@ const redeIcons = {
   TikTok: '🎵',
 }
 
-export default function SocialCards() {
+export default function SocialCards({ data }) {
   return (
     <div className="bg-dark-card rounded-2xl p-5 border border-dark-border">
       <h3 className="text-lg font-semibold text-text-primary mb-4">Redes Sociais</h3>
       <div className="grid grid-cols-2 gap-3">
-        {socialMediaMetrics.map((rede) => (
+        {data.map((rede) => (
           <div key={rede.rede} className="bg-dark/50 rounded-xl p-4 border border-dark-border/50">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-xl">{redeIcons[rede.rede]}</span>

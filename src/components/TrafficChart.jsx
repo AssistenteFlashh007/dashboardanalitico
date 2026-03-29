@@ -1,5 +1,4 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { trafficOverview } from '../data/mockData'
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload) return null
@@ -15,12 +14,12 @@ const CustomTooltip = ({ active, payload, label }) => {
   )
 }
 
-export default function TrafficChart() {
+export default function TrafficChart({ data }) {
   return (
     <div className="bg-dark-card rounded-2xl p-5 border border-dark-border">
       <h3 className="text-lg font-semibold text-text-primary mb-4">Visão Geral do Tráfego</h3>
       <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={trafficOverview}>
+        <AreaChart data={data}>
           <defs>
             <linearGradient id="colorVisitantes" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
