@@ -5,6 +5,7 @@ import {
   fetchMetaDaily,
   fetchHublaSummary,
   fetchPagtrustSales,
+  fetchAttribution,
   checkHealth,
 } from '../services/api.js'
 import * as mockData from '../data/mockData.js'
@@ -26,13 +27,14 @@ export default function useDashboardData(period = 'last_30d') {
       setSources(configured)
 
       // Buscar dados em paralelo
-      const [metaInsights, metaCampaigns, metaDaily, hublaSummary, pagtrustSales] =
+      const [metaInsights, metaCampaigns, metaDaily, hublaSummary, pagtrustSales, attribution] =
         await Promise.all([
           configured.meta ? fetchMetaInsights(period) : null,
           configured.meta ? fetchMetaCampaigns(period) : null,
           configured.meta ? fetchMetaDaily('last_7d') : null,
           configured.hubla ? fetchHublaSummary() : null,
           configured.pagtrust ? fetchPagtrustSales() : null,
+          configured.meta ? fetchAttribution(period) : null,
         ])
 
       // Montar KPIs (dados reais ou mock)
@@ -58,7 +60,8 @@ export default function useDashboardData(period = 'last_30d') {
         campaigns,
         weeklyTraffic,
         salesData,
-        trafficOverview: mockData.trafficOverview, // Mantém mock por enquanto
+        attribution,
+        trafficOverview: mockData.trafficOverview,
         trafficSources: mockData.trafficSources,
         socialMediaMetrics: mockData.socialMediaMetrics,
         conversionFunnel: buildFunnel(metaInsights, hublaSummary, pagtrustSales),
@@ -73,6 +76,7 @@ export default function useDashboardData(period = 'last_30d') {
         campaigns: mockData.campaignPerformance,
         weeklyTraffic: mockData.weeklyTraffic,
         salesData: null,
+        attribution: null,
         trafficOverview: mockData.trafficOverview,
         trafficSources: mockData.trafficSources,
         socialMediaMetrics: mockData.socialMediaMetrics,

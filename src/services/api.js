@@ -39,3 +39,8 @@ export async function fetchHublaSummary() {
 export async function fetchPagtrustSales() {
   return apiFetch('/pagtrust/sales')
 }
+
+// Atribuição UTM
+export async function fetchAttribution(period = 'last_30d') {
+  return apiFetch(`/attribution?period=${period}`)
+}

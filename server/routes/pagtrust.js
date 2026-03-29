@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { addEvent, getEvents, getSalesSummary, validateToken } from '../services/pagtrust.js'
+import { addSaleWithUtm, extractUtmFromPagtrust } from '../services/attribution.js'
 
 const router = Router()
 
@@ -16,7 +17,23 @@ router.post('/webhook', (req, res) => {
   }
 
   addEvent(event)
-  console.log(`[Pagtrust Webhook] Evento recebido: ${event.type || event.status || 'desconhecido'}`)
+
+  // Se for venda aprovada, salvar com UTM para atribuição
+  const isSale = event.status === 'approved' || event.status === 'aprovado' || event.type === 'purchase_approved'
+  if (isSale) {
+    const utm = extractUtmFromPagtrust(event)
+    addSaleWithUtm({
+      id: event.id || event.transaction_id || Date.now(),
+      plataforma: 'Pagtrust',
+      produto: event.product?.name || event.productName || 'Produto Pagtrust',
+      valor: event.purchase?.price || event.price || event.amount || event.valor || 0,
+      data: event.purchase?.approved_date || event.approved_date || new Date().toISOString(),
+      comprador: event.buyer?.name || event.buyerName || '',
+      utm,
+    })
+  }
+
+  console.log(`[Pagtrust Webhook] Evento: ${event.type || event.status || 'desconhecido'}${isSale ? ' (+ UTM salvo)' : ''}`)
   res.status(200).json({ received: true })
 })
 

@@ -10,6 +10,7 @@ import FunnelChart from './components/FunnelChart'
 import WeeklyChart from './components/WeeklyChart'
 import TopPages from './components/TopPages'
 import SalesTable from './components/SalesTable'
+import AttributionTable from './components/AttributionTable'
 import LoadingSkeleton from './components/LoadingSkeleton'
 import useDashboardData from './hooks/useDashboardData'
 
@@ -93,6 +94,9 @@ export default function App() {
 
         {/* Tabela de Campanhas */}
         <CampaignTable data={data.campaigns} />
+
+        {/* Atribuição UTM — ROAS Real */}
+        {data.attribution && <AttributionTable data={data.attribution} />}
 
         {/* Vendas (só aparece se Hubla ou Pagtrust configurados) */}
         {data.salesData && <SalesTable salesData={data.salesData} />}

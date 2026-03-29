@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { addEvent, getEvents, getSalesSummary, validateToken } from '../services/hubla.js'
+import { addSaleWithUtm, extractUtmFromHubla } from '../services/attribution.js'
 
 const router = Router()
 
@@ -17,8 +18,26 @@ router.post('/webhook', (req, res) => {
   }
 
   addEvent(event)
+
+  // Se for venda confirmada, salvar com UTM para atribuição
+  const isSale = event.type === 'invoice.payment_succeeded' ||
+                 event.type === 'invoice.payment_confirmed'
+  if (isSale) {
+    const utm = extractUtmFromHubla(event)
+    const valor = (event.event?.invoice?.amount || 0)
+    addSaleWithUtm({
+      id: event.event?.invoice?.id || Date.now(),
+      plataforma: 'Hubla',
+      produto: event.event?.invoice?.product?.name || 'Produto Hubla',
+      valor: valor > 1000 ? valor / 100 : valor,
+      data: event.event?.invoice?.paidAt || new Date().toISOString(),
+      comprador: event.event?.invoice?.buyer?.name || '',
+      utm,
+    })
+  }
+
   const eventType = event.type || 'desconhecido'
-  console.log(`[Hubla Webhook] Evento: ${eventType}`)
+  console.log(`[Hubla Webhook] Evento: ${eventType}${isSale ? ' (+ UTM salvo)' : ''}`)
   res.status(200).json({ received: true })
 })
 
