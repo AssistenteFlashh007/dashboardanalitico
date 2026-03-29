@@ -1,14 +1,33 @@
-import { BarChart3, Bell, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+import { BarChart3, Bell, RefreshCw, Calendar } from 'lucide-react'
 import StatusBadge from './StatusBadge'
 
-const periods = [
-  { value: 'last_7d', label: '7 dias' },
-  { value: 'last_30d', label: '30 dias' },
-  { value: 'last_90d', label: '90 dias' },
-  { value: 'this_month', label: 'Este mês' },
+const presets = [
+  { value: 'today', label: 'Hoje' },
+  { value: 'yesterday', label: 'Ontem' },
+  { value: 'this_month', label: 'Este Mês' },
+  { value: 'last_90d', label: 'Total' },
 ]
 
 export default function Header({ period, onPeriodChange, onRefresh, sources, loading }) {
+  const [showCustom, setShowCustom] = useState(false)
+  const [since, setSince] = useState('')
+  const [until, setUntil] = useState('')
+
+  const currentPreset = period?.preset || period
+
+  function handlePreset(value) {
+    setShowCustom(false)
+    onPeriodChange({ preset: value })
+  }
+
+  function handleCustomApply() {
+    if (since && until) {
+      onPeriodChange({ preset: 'custom', since, until })
+      setShowCustom(false)
+    }
+  }
+
   return (
     <header className="bg-dark-card border-b border-dark-border px-6 py-4">
       <div className="flex items-center justify-between">
@@ -22,14 +41,14 @@ export default function Header({ period, onPeriodChange, onRefresh, sources, loa
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Filtro de período */}
+          {/* Filtros de período */}
           <div className="flex bg-dark rounded-lg border border-dark-border p-0.5">
-            {periods.map(p => (
+            {presets.map(p => (
               <button
                 key={p.value}
-                onClick={() => onPeriodChange(p.value)}
+                onClick={() => handlePreset(p.value)}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  period === p.value
+                  currentPreset === p.value
                     ? 'bg-primary text-white'
                     : 'text-text-secondary hover:text-text-primary'
                 }`}
@@ -37,9 +56,19 @@ export default function Header({ period, onPeriodChange, onRefresh, sources, loa
                 {p.label}
               </button>
             ))}
+            <button
+              onClick={() => setShowCustom(!showCustom)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1 ${
+                currentPreset === 'custom'
+                  ? 'bg-primary text-white'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Calendar className="w-3 h-3" />
+              Personalizado
+            </button>
           </div>
 
-          {/* Refresh */}
           <button
             onClick={onRefresh}
             disabled={loading}
@@ -56,6 +85,33 @@ export default function Header({ period, onPeriodChange, onRefresh, sources, loa
           </div>
         </div>
       </div>
+
+      {/* Date picker personalizado */}
+      {showCustom && (
+        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-dark-border">
+          <span className="text-xs text-text-secondary">De:</span>
+          <input
+            type="date"
+            value={since}
+            onChange={e => setSince(e.target.value)}
+            className="bg-dark border border-dark-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-primary/50"
+          />
+          <span className="text-xs text-text-secondary">Até:</span>
+          <input
+            type="date"
+            value={until}
+            onChange={e => setUntil(e.target.value)}
+            className="bg-dark border border-dark-border rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-primary/50"
+          />
+          <button
+            onClick={handleCustomApply}
+            disabled={!since || !until}
+            className="px-4 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+          >
+            Aplicar
+          </button>
+        </div>
+      )}
     </header>
   )
 }

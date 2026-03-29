@@ -69,13 +69,28 @@ function parseInsights(insights, rate) {
   return result
 }
 
-export async function getAccountInsights(datePreset = 'last_30d') {
-  const cacheKey = `meta_insights_${datePreset}`
+function buildDateParams(opts = {}) {
+  const { period = 'last_30d', since, until } = typeof opts === 'string' ? { period: opts } : opts
+  if (since && until) {
+    return { time_range: JSON.stringify({ since, until }) }
+  }
+  return { date_preset: period }
+}
+
+function buildCacheKey(prefix, opts) {
+  const { period, since, until } = typeof opts === 'string' ? { period: opts } : opts
+  if (since && until) return `${prefix}_${since}_${until}`
+  return `${prefix}_${period || 'last_30d'}`
+}
+
+export async function getAccountInsights(opts = 'last_30d') {
+  const cacheKey = buildCacheKey('meta_insights', opts)
   const cached = getCache(cacheKey)
   if (cached) return cached
 
   const accountIds = getAccountIds()
   const rate = await getUsdToBrl()
+  const dateParams = buildDateParams(opts)
   const fields = [
     'spend', 'impressions', 'reach', 'clicks',
     'ctr', 'cpc', 'cpm', 'actions',
@@ -87,7 +102,7 @@ export async function getAccountInsights(datePreset = 'last_30d') {
     accountIds.map(async (accountId) => {
       const data = await metaFetch(`/${accountId}/insights`, {
         fields,
-        date_preset: datePreset,
+        ...dateParams,
         level: 'account',
       })
       return {
@@ -173,13 +188,14 @@ export async function getAccountInsights(datePreset = 'last_30d') {
   return result
 }
 
-export async function getCampaignInsights(datePreset = 'last_30d') {
-  const cacheKey = `meta_campaigns_${datePreset}`
+export async function getCampaignInsights(opts = 'last_30d') {
+  const cacheKey = buildCacheKey('meta_campaigns', opts)
   const cached = getCache(cacheKey)
   if (cached) return cached
 
   const accountIds = getAccountIds()
   const rate = await getUsdToBrl()
+  const dateParams = buildDateParams(opts)
   const fields = [
     'campaign_name', 'campaign_id',
     'spend', 'impressions', 'reach', 'clicks',
@@ -192,7 +208,7 @@ export async function getCampaignInsights(datePreset = 'last_30d') {
     accountIds.map(async (accountId) => {
       const data = await metaFetch(`/${accountId}/insights`, {
         fields,
-        date_preset: datePreset,
+        ...dateParams,
         level: 'campaign',
         limit: '50',
       })
@@ -236,19 +252,20 @@ export async function getCampaignInsights(datePreset = 'last_30d') {
   return campaigns
 }
 
-export async function getDailyInsights(datePreset = 'last_7d') {
-  const cacheKey = `meta_daily_${datePreset}`
+export async function getDailyInsights(opts = 'last_7d') {
+  const cacheKey = buildCacheKey('meta_daily', opts)
   const cached = getCache(cacheKey)
   if (cached) return cached
 
   const accountIds = getAccountIds()
   const rate = await getUsdToBrl()
+  const dateParams = buildDateParams(opts)
 
   const results = await Promise.allSettled(
     accountIds.map(async (accountId) => {
       const data = await metaFetch(`/${accountId}/insights`, {
         fields: 'spend,impressions,reach,clicks',
-        date_preset: datePreset,
+        ...dateParams,
         level: 'account',
         time_increment: '1',
       })

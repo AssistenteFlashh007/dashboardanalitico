@@ -10,40 +10,46 @@ import {
 } from '../services/api.js'
 import * as mockData from '../data/mockData.js'
 
-export default function useDashboardData(period = 'last_30d') {
+// Nomes do produto IniciaShop nas plataformas
+const INICIASHOP_NAMES = ['iniciashop']
+
+function isIniciaShop(productName) {
+  if (!productName) return false
+  return INICIASHOP_NAMES.some(n => productName.toLowerCase().includes(n))
+}
+
+export default function useDashboardData(period = { preset: 'last_30d' }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [sources, setSources] = useState({ meta: false, hubla: false, pagtrust: false })
+
+  // Normalizar period para objeto
+  const periodObj = typeof period === 'string' ? { preset: period } : period
 
   const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
 
     try {
-      // Verificar quais serviços estão configurados
       const health = await checkHealth()
       const configured = health?.configured || {}
       setSources(configured)
 
-      // Buscar dados em paralelo
       const [metaInsights, metaCampaigns, metaDaily, hublaSummary, pagtrustSales, attribution] =
         await Promise.all([
-          configured.meta ? fetchMetaInsights(period) : null,
-          configured.meta ? fetchMetaCampaigns(period) : null,
-          configured.meta ? fetchMetaDaily('last_7d') : null,
+          configured.meta ? fetchMetaInsights(periodObj) : null,
+          configured.meta ? fetchMetaCampaigns(periodObj) : null,
+          configured.meta ? fetchMetaDaily(periodObj) : null,
           configured.hubla ? fetchHublaSummary() : null,
           configured.pagtrust ? fetchPagtrustSales() : null,
-          configured.meta ? fetchAttribution(period) : null,
+          configured.meta ? fetchAttribution(periodObj) : null,
         ])
 
-      // Montar KPIs (dados reais ou mock)
-      const kpis = buildKpis(metaInsights, hublaSummary, pagtrustSales)
-
-      // Montar campanhas
       const campaigns = metaCampaigns || mockData.campaignPerformance
+      const salesData = buildSalesData(hublaSummary, pagtrustSales)
+      const kpis = buildKpis(metaInsights, hublaSummary, pagtrustSales, attribution)
 
-      // Tráfego diário para gráfico semanal
       const weeklyTraffic = metaDaily
         ? metaDaily.map(d => {
             const date = new Date(d.data)
@@ -51,9 +57,6 @@ export default function useDashboardData(period = 'last_30d') {
             return { dia: dias[date.getDay()], visitas: d.cliques }
           })
         : mockData.weeklyTraffic
-
-      // Vendas combinadas (Hubla + Pagtrust)
-      const salesData = buildSalesData(hublaSummary, pagtrustSales)
 
       setData({
         kpis,
@@ -70,9 +73,8 @@ export default function useDashboardData(period = 'last_30d') {
     } catch (err) {
       console.error('[Dashboard]', err)
       setError(err.message)
-      // Fallback para mock data
       setData({
-        kpis: mockData.kpis,
+        kpis: buildKpis(null, null, null, null),
         campaigns: mockData.campaignPerformance,
         weeklyTraffic: mockData.weeklyTraffic,
         salesData: null,
@@ -86,7 +88,7 @@ export default function useDashboardData(period = 'last_30d') {
     } finally {
       setLoading(false)
     }
-  }, [period])
+  }, [periodObj.preset, periodObj.since, periodObj.until])
 
   useEffect(() => {
     loadData()
@@ -95,56 +97,56 @@ export default function useDashboardData(period = 'last_30d') {
   return { data, loading, error, sources, refetch: loadData }
 }
 
-function buildKpis(meta, hubla, pagtrust) {
-  const hasReal = meta || hubla || pagtrust
+function buildKpis(meta, hubla, pagtrust, attribution) {
+  // Faturamento = receita total de vendas (Hubla + Pagtrust + CSV importado)
+  const receitaHubla = hubla?.receita || 0
+  const receitaPagtrust = pagtrust?.receita || 0
+  const receitaAtribuicao = attribution?.totalReceita || 0
+  // Usar o maior valor entre vendas diretas e atribuição (evitar duplicação)
+  const faturamento = Math.max(receitaHubla + receitaPagtrust, receitaAtribuicao)
 
-  if (!hasReal) return mockData.kpis
+  // Investimento = gasto total no Meta Ads (já em BRL)
+  const investimento = meta?.spend || 0
 
-  // Receita total = Hubla + Pagtrust
-  const receitaHubla = hubla?.receitaLiquida || 0
-  const receitaPagtrust = pagtrust?.receitaLiquida || 0
-  const receitaTotal = receitaHubla + receitaPagtrust
+  // Contar vendas IniciaShop para CPA
+  const allSales = [
+    ...(hubla?.transacoes || []),
+    ...(pagtrust?.ultimasVendas || []),
+  ]
+  const vendasIniciaShop = allSales.filter(s => isIniciaShop(s.produto)).length
+  // Se não tem vendas filtradas do webhook, tentar da atribuição
+  const totalVendasIniciaShop = vendasIniciaShop > 0 ? vendasIniciaShop : (meta?.conversions || 0)
 
-  // Vendas totais
-  const vendasHubla = hubla?.totalVendas || 0
-  const vendasPagtrust = pagtrust?.totalVendas || 0
+  // CPA IniciaShop = investimento / vendas IniciaShop
+  const cpaIniciaShop = totalVendasIniciaShop > 0
+    ? Math.round((investimento / totalVendasIniciaShop) * 100) / 100
+    : 0
+
+  // ROAS real = faturamento / investimento
+  const roas = investimento > 0
+    ? Math.round((faturamento / investimento) * 100) / 100
+    : 0
+
+  // Lucro = faturamento - investimento
+  const lucro = faturamento - investimento
+
+  // Ticket médio = faturamento / total vendas
+  const totalVendas = (hubla?.totalVendas || 0) + (pagtrust?.totalVendas || 0)
+  const totalVendasReal = totalVendas > 0 ? totalVendas : (attribution?.totalVendas || 0)
+  const ticketMedio = totalVendasReal > 0
+    ? Math.round((faturamento / totalVendasReal) * 100) / 100
+    : 0
 
   return {
-    visitantes: {
-      valor: meta?.reach || mockData.kpis.visitantes.valor,
-      variacao: 0,
-      anterior: 0,
-    },
-    taxaConversao: {
-      valor: meta ? parseFloat(meta.ctr.toFixed(2)) : mockData.kpis.taxaConversao.valor,
-      variacao: 0,
-      anterior: 0,
-    },
-    custoAquisicao: {
-      valor: meta ? parseFloat(meta.cpa.toFixed(2)) : mockData.kpis.custoAquisicao.valor,
-      variacao: 0,
-      anterior: 0,
-    },
-    receitaCampanhas: {
-      valor: meta?.spend || mockData.kpis.receitaCampanhas.valor,
-      variacao: 0,
-      anterior: 0,
-    },
-    roasMedio: {
-      valor: meta ? parseFloat(meta.roas.toFixed(2)) : mockData.kpis.roasMedio.valor,
-      variacao: 0,
-      anterior: 0,
-    },
-    sessaoMedia: {
-      valor: receitaTotal > 0
-        ? `R$ ${receitaTotal.toLocaleString('pt-BR')}`
-        : mockData.kpis.sessaoMedia.valor,
-      variacao: 0,
-      anterior: 0,
-    },
-    // Dados extras de vendas
-    vendasTotal: vendasHubla + vendasPagtrust,
-    receitaTotal,
+    faturamento: { valor: faturamento, variacao: 0 },
+    investimento: { valor: investimento, variacao: 0 },
+    cpaIniciaShop: { valor: cpaIniciaShop, variacao: 0 },
+    roas: { valor: roas, variacao: 0 },
+    lucro: { valor: lucro, variacao: 0 },
+    ticketMedio: { valor: ticketMedio, variacao: 0 },
+    // Extras para outros componentes
+    vendasTotal: totalVendasReal,
+    receitaTotal: faturamento,
   }
 }
 

@@ -3,7 +3,7 @@ const API_BASE = '/api'
 async function apiFetch(endpoint) {
   try {
     const res = await fetch(`${API_BASE}${endpoint}`)
-    if (res.status === 501) return null // Serviço não configurado
+    if (res.status === 501) return null
     if (!res.ok) throw new Error(`API error: ${res.status}`)
     const json = await res.json()
     return json.success ? json.data : null
@@ -11,6 +11,13 @@ async function apiFetch(endpoint) {
     console.warn(`[API] ${endpoint}:`, error.message)
     return null
   }
+}
+
+function buildDateQuery(opts) {
+  if (!opts) return 'period=last_30d'
+  const { preset, since, until } = typeof opts === 'string' ? { preset: opts } : opts
+  if (since && until) return `since=${since}&until=${until}`
+  return `period=${preset || 'last_30d'}`
 }
 
 export async function checkHealth() {
@@ -24,16 +31,16 @@ export async function checkHealth() {
 }
 
 // Meta Ads
-export async function fetchMetaInsights(period = 'last_30d') {
-  return apiFetch(`/meta/insights?period=${period}`)
+export async function fetchMetaInsights(opts) {
+  return apiFetch(`/meta/insights?${buildDateQuery(opts)}`)
 }
 
-export async function fetchMetaCampaigns(period = 'last_30d') {
-  return apiFetch(`/meta/campaigns?period=${period}`)
+export async function fetchMetaCampaigns(opts) {
+  return apiFetch(`/meta/campaigns?${buildDateQuery(opts)}`)
 }
 
-export async function fetchMetaDaily(period = 'last_7d') {
-  return apiFetch(`/meta/daily?period=${period}`)
+export async function fetchMetaDaily(opts) {
+  return apiFetch(`/meta/daily?${buildDateQuery(opts)}`)
 }
 
 // Hubla
@@ -47,6 +54,6 @@ export async function fetchPagtrustSales() {
 }
 
 // Atribuição UTM
-export async function fetchAttribution(period = 'last_30d') {
-  return apiFetch(`/attribution?period=${period}`)
+export async function fetchAttribution(opts) {
+  return apiFetch(`/attribution?${buildDateQuery(opts)}`)
 }

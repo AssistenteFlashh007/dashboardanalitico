@@ -3,11 +3,17 @@ import { getAccountInsights, getCampaignInsights, getDailyInsights } from '../se
 
 const router = Router()
 
-// GET /api/meta/insights?period=last_30d
+function getDateOpts(query) {
+  const { period, since, until } = query
+  if (since && until) return { since, until }
+  return { period: period || 'last_30d' }
+}
+
+// GET /api/meta/insights?period=last_30d  OU  ?since=2026-03-01&until=2026-03-28
 router.get('/insights', async (req, res) => {
   try {
-    const period = req.query.period || 'last_30d'
-    const data = await getAccountInsights(period)
+    const opts = getDateOpts(req.query)
+    const data = await getAccountInsights(opts)
     res.json({ success: true, data })
   } catch (error) {
     console.error('[Meta Insights]', error.message)
@@ -16,11 +22,11 @@ router.get('/insights', async (req, res) => {
   }
 })
 
-// GET /api/meta/campaigns?period=last_30d
+// GET /api/meta/campaigns?period=last_30d  OU  ?since=2026-03-01&until=2026-03-28
 router.get('/campaigns', async (req, res) => {
   try {
-    const period = req.query.period || 'last_30d'
-    const data = await getCampaignInsights(period)
+    const opts = getDateOpts(req.query)
+    const data = await getCampaignInsights(opts)
     res.json({ success: true, data })
   } catch (error) {
     console.error('[Meta Campaigns]', error.message)
@@ -29,11 +35,11 @@ router.get('/campaigns', async (req, res) => {
   }
 })
 
-// GET /api/meta/daily?period=last_7d
+// GET /api/meta/daily?period=last_7d  OU  ?since=2026-03-01&until=2026-03-28
 router.get('/daily', async (req, res) => {
   try {
-    const period = req.query.period || 'last_7d'
-    const data = await getDailyInsights(period)
+    const opts = getDateOpts(req.query)
+    const data = await getDailyInsights(opts)
     res.json({ success: true, data })
   } catch (error) {
     console.error('[Meta Daily]', error.message)

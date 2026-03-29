@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Users, Target, DollarSign, MousePointerClick, TrendingUp, Clock } from 'lucide-react'
+import { Wallet, TrendingUp, Target, BarChart2, DollarSign, Receipt } from 'lucide-react'
 import Header from './components/Header'
 import KpiCard from './components/KpiCard'
 import TrafficChart from './components/TrafficChart'
@@ -16,7 +16,7 @@ import LoadingSkeleton from './components/LoadingSkeleton'
 import useDashboardData from './hooks/useDashboardData'
 
 export default function App() {
-  const [period, setPeriod] = useState('last_30d')
+  const [period, setPeriod] = useState({ preset: 'last_30d' })
   const { data, loading, error, sources, refetch } = useDashboardData(period)
 
   if (loading && !data) return <LoadingSkeleton />
@@ -41,47 +41,49 @@ export default function App() {
       )}
 
       <main className="p-6 max-w-[1440px] mx-auto space-y-6">
-        {/* KPIs */}
+        {/* KPIs Principais */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <KpiCard
-            titulo="Alcance"
-            valor={kpis.visitantes.valor}
-            variacao={kpis.visitantes.variacao}
-            icone={Users}
-          />
-          <KpiCard
-            titulo="CTR"
-            valor={kpis.taxaConversao.valor}
-            variacao={kpis.taxaConversao.variacao}
-            icone={Target}
-            sufixo="%"
-          />
-          <KpiCard
-            titulo="CPA"
-            valor={kpis.custoAquisicao.valor}
-            variacao={kpis.custoAquisicao.variacao}
-            icone={DollarSign}
+            titulo="Faturamento"
+            valor={kpis.faturamento.valor}
+            variacao={kpis.faturamento.variacao}
+            icone={Wallet}
             prefixo="R$ "
           />
           <KpiCard
-            titulo="Investido (Ads)"
-            valor={kpis.receitaCampanhas.valor}
-            variacao={kpis.receitaCampanhas.variacao}
-            icone={MousePointerClick}
+            titulo="Investimento"
+            valor={kpis.investimento.valor}
+            variacao={kpis.investimento.variacao}
+            icone={BarChart2}
+            prefixo="R$ "
+          />
+          <KpiCard
+            titulo="CPA IniciaShop"
+            valor={kpis.cpaIniciaShop.valor}
+            variacao={kpis.cpaIniciaShop.variacao}
+            icone={Target}
             prefixo="R$ "
           />
           <KpiCard
             titulo="ROAS"
-            valor={kpis.roasMedio.valor}
-            variacao={kpis.roasMedio.variacao}
+            valor={kpis.roas.valor}
+            variacao={kpis.roas.variacao}
             icone={TrendingUp}
             sufixo="x"
           />
           <KpiCard
-            titulo={data.salesData ? 'Receita Vendas' : 'Sessão Média'}
-            valor={kpis.sessaoMedia.valor}
-            variacao={kpis.sessaoMedia.variacao}
-            icone={Clock}
+            titulo="Lucro"
+            valor={kpis.lucro.valor}
+            variacao={kpis.lucro.variacao}
+            icone={DollarSign}
+            prefixo="R$ "
+          />
+          <KpiCard
+            titulo="Ticket Médio"
+            valor={kpis.ticketMedio.valor}
+            variacao={kpis.ticketMedio.variacao}
+            icone={Receipt}
+            prefixo="R$ "
           />
         </div>
 
@@ -100,7 +102,7 @@ export default function App() {
         <CsvUpload onImported={refetch} />
         <AttributionTable data={data.attribution} />
 
-        {/* Vendas (só aparece se Hubla ou Pagtrust configurados) */}
+        {/* Vendas */}
         {data.salesData && <SalesTable salesData={data.salesData} />}
 
         {/* Linha inferior */}
