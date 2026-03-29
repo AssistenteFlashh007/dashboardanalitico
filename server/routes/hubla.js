@@ -24,14 +24,22 @@ router.post('/webhook', (req, res) => {
                  event.type === 'invoice.payment_confirmed'
   if (isSale) {
     const utm = extractUtmFromHubla(event)
-    const valor = (event.event?.invoice?.amount || 0)
+    // Extrair valor — pode ser número (centavos) ou objeto {totalCents}
+    const rawAmount = event.event?.invoice?.amount
+    let valor = 0
+    if (typeof rawAmount === 'number') {
+      valor = rawAmount > 1000 ? rawAmount / 100 : rawAmount
+    } else if (rawAmount && typeof rawAmount === 'object') {
+      valor = (rawAmount.totalCents || rawAmount.subtotalCents || 0) / 100
+    }
+
     addSaleWithUtm({
       id: event.event?.invoice?.id || Date.now(),
       plataforma: 'Hubla',
-      produto: event.event?.invoice?.product?.name || 'Produto Hubla',
-      valor: valor > 1000 ? valor / 100 : valor,
+      produto: event.event?.invoice?.product?.name || event.event?.invoice?.offer?.name || 'Produto Hubla',
+      valor,
       data: event.event?.invoice?.paidAt || new Date().toISOString(),
-      comprador: event.event?.invoice?.buyer?.name || '',
+      comprador: event.event?.invoice?.buyer?.name || event.event?.invoice?.customer?.name || '',
       utm,
     })
   }

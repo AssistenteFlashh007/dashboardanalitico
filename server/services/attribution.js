@@ -8,8 +8,22 @@ const DATA_DIR = join(__dirname, '..', 'data')
 const SALES_FILE = join(DATA_DIR, 'sales.json')
 const MAX_SALES = 100000
 
-// Carregar vendas do arquivo ao iniciar
-let salesWithUtm = loadFromDisk()
+// Normalizar valor — pode ser número, objeto {totalCents}, ou string
+function normalizeValor(val) {
+  if (typeof val === 'number') return val
+  if (val && typeof val === 'object') {
+    const cents = val.totalCents || val.amount || val.subtotalCents || 0
+    return cents / 100
+  }
+  if (typeof val === 'string') {
+    const num = parseFloat(val.replace(/[R$\s,]/g, '').replace(',', '.'))
+    return isNaN(num) ? 0 : num
+  }
+  return 0
+}
+
+// Carregar vendas do arquivo ao iniciar e normalizar valores
+let salesWithUtm = loadFromDisk().map(s => ({ ...s, valor: normalizeValor(s.valor) }))
 console.log(`📂 ${salesWithUtm.length} vendas carregadas do disco`)
 
 function loadFromDisk() {
@@ -40,7 +54,7 @@ function saveToDisk() {
 }
 
 export function addSaleWithUtm(sale) {
-  salesWithUtm.unshift(sale)
+  salesWithUtm.unshift({ ...sale, valor: normalizeValor(sale.valor) })
   if (salesWithUtm.length > MAX_SALES) {
     salesWithUtm.length = MAX_SALES
   }
