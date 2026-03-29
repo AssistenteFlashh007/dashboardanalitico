@@ -2,7 +2,6 @@ import { parse } from 'csv-parse/sync'
 import * as XLSX from 'xlsx'
 import { addSaleWithUtm } from './attribution.js'
 
-// Mapeamento de colunas — cobre Pagtrust e Hubla
 const COLUMN_MAPS = {
   valor: ['valor_liquido', 'valor', 'value', 'amount', 'price', 'preco', 'preço', 'receita', 'revenue', 'total', 'net_amount', 'valor_transacionado', 'preco_base_do_produto', 'gross_amount'],
   produto: ['produtos', 'produto', 'nome_do_produto', 'nome do produto', 'product', 'product_name', 'nome_produto', 'item', 'nome_oferta', 'nome da oferta'],
@@ -16,6 +15,13 @@ const COLUMN_MAPS = {
   utm_content: ['utmcontent', 'utm_content', 'content', 'conteudo', 'conteúdo'],
   utm_term: ['utmterm', 'utm_term', 'term', 'termo'],
   id: ['codigo_da_venda', 'id', 'transaction_id', 'invoice_id', 'order_id', 'pedido', 'codigo', 'code'],
+  // Dados de funil
+  orderbump: ['orderbump', 'order_bump', 'ob'],
+  upsell: ['upsell', 'up_sell'],
+  funil: ['funil', 'funnel', 'funil_nome'],
+  checkout: ['checkoutnome', 'checkout_nome', 'checkout', 'checkout_name'],
+  oferta: ['oferta', 'offer', 'nome_da_oferta', 'nome da oferta'],
+  metodo_pagamento: ['metodo_de_pagamento', 'método de pagamento', 'metodo_pagamento', 'payment_method'],
 }
 
 function findColumn(headers, fieldNames) {
@@ -41,29 +47,24 @@ function parseValue(val) {
 function parseDate(val) {
   if (!val) return null
   const str = String(val).trim()
-
-  // DD/MM/YYYY HH:MM:SS (formato Hubla)
   const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2}:\d{2})/)
   if (brMatch) {
     const [, day, month, year, time] = brMatch
     return `${year}-${month}-${day}T${time}.000Z`
   }
-
-  // DD/MM/YYYY (sem hora)
   const brDateOnly = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
   if (brDateOnly) {
     const [, day, month, year] = brDateOnly
     return `${year}-${month}-${day}T00:00:00.000Z`
   }
-
-  // ISO 8601 (formato Pagtrust: 2026-03-29T02:25:06.408Z)
-  if (str.includes('T') && str.match(/^\d{4}-\d{2}-\d{2}T/)) {
-    return str
-  }
-
-  // Tentar parse nativo
+  if (str.includes('T') && str.match(/^\d{4}-\d{2}-\d{2}T/)) return str
   const d = new Date(str)
   return isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+function isSim(val) {
+  if (!val) return false
+  return ['sim', 'yes', 'true', '1'].includes(String(val).toLowerCase().trim())
 }
 
 function processRecords(records, platform) {
@@ -86,7 +87,6 @@ function processRecords(records, platform) {
 
   for (const row of records) {
     try {
-      // Filtrar por status
       if (colMap.status) {
         const status = (row[colMap.status] || '').toLowerCase()
         const approved = ['aprovado', 'approved', 'pago', 'paga', 'paid', 'completo', 'completed']
@@ -108,33 +108,42 @@ function processRecords(records, platform) {
         continue
       }
 
-      // Extrair UTM campaign — limpar pipes e IDs do Meta
       let utmCampaign = row[colMap.utm_campaign] || null
       if (utmCampaign) {
-        // Pagtrust às vezes coloca "NomeCampanha|ID" — pegar só o nome
         const parts = utmCampaign.split('|')
         utmCampaign = parts[0].trim()
+      }
+
+      let utmContent = row[colMap.utm_content] || null
+      if (utmContent) {
+        const parts = utmContent.split('|')
+        utmContent = parts[0].trim()
       }
 
       const utm = {
         utm_source: row[colMap.utm_source] || null,
         utm_medium: row[colMap.utm_medium] || null,
         utm_campaign: utmCampaign,
-        utm_content: row[colMap.utm_content] || null,
+        utm_content: utmContent,
         utm_term: row[colMap.utm_term] || null,
       }
 
-      // Produto — pegar o primeiro se tiver múltiplos separados por |
       let produto = row[colMap.produto] || 'Produto importado'
       if (produto.includes('|')) {
         produto = produto.split('|')[0].trim()
       }
 
-      // Ignorar produtos excluídos
       const excluded = ['venda express']
       if (excluded.some(e => produto.toLowerCase().includes(e))) {
         skipped++
         continue
+      }
+
+      // Extrair conta de anúncio do nome da campanha
+      let conta = null
+      if (utmCampaign) {
+        const match = utmCampaign.match(/\[Masterclass(\d+)\]/)
+        if (match) conta = `Bru Masterclass ${match[1]}`
       }
 
       addSaleWithUtm({
@@ -146,6 +155,14 @@ function processRecords(records, platform) {
         comprador: row[colMap.comprador] || '',
         email: row[colMap.email] || '',
         utm,
+        // Dados de funil
+        orderbump: isSim(row[colMap.orderbump]),
+        upsell: isSim(row[colMap.upsell]),
+        funil: row[colMap.funil] || null,
+        checkout: row[colMap.checkout] || null,
+        oferta: row[colMap.oferta] || null,
+        metodo_pagamento: row[colMap.metodo_pagamento] || null,
+        conta,
       })
 
       imported++

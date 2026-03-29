@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:hubla.gitbook.io)",
+      "WebSearch"
+    ]
+  }
+}
