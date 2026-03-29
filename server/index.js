@@ -9,6 +9,7 @@ import pagtrustRoutes from './routes/pagtrust.js'
 import attributionRoutes from './routes/attribution.js'
 import importRoutes from './routes/import.js'
 import analyticsRoutes from './routes/analytics.js'
+import abtestsRoutes from './routes/abtests.js'
 
 dotenv.config()
 
@@ -26,6 +27,7 @@ app.use('/api/pagtrust', pagtrustRoutes)
 app.use('/api/attribution', attributionRoutes)
 app.use('/api/import', importRoutes)
 app.use('/api/analytics', analyticsRoutes)
+app.use('/api/abtests', abtestsRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => {
