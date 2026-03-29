@@ -1,6 +1,6 @@
 import { getAllSalesWithUtm } from './attribution.js'
+import { getCampaignInsights } from './metaAds.js'
 
-// Converter data para YYYY-MM-DD em fuso BR (UTC-3)
 function toDateBR(date) {
   const d = new Date(date)
   d.setHours(d.getHours() - 3)
@@ -25,8 +25,6 @@ function resolveDates(opts) {
 
 function filterSales(sales, { dateOpts, platform, conta }) {
   let filtered = sales
-
-  // Filtrar por data
   const { since, until } = resolveDates(dateOpts)
   if (since || until) {
     filtered = filtered.filter(s => {
@@ -36,26 +34,87 @@ function filterSales(sales, { dateOpts, platform, conta }) {
       return true
     })
   }
-
-  // Filtrar por plataforma
   if (platform && platform !== 'todas') {
     filtered = filtered.filter(s => s.plataforma?.toLowerCase() === platform.toLowerCase())
   }
-
-  // Filtrar por conta de anúncio
   if (conta && conta !== 'todas') {
     filtered = filtered.filter(s => s.conta === conta)
   }
-
   return filtered
 }
 
-export function getFunnelAnalytics(opts = {}) {
+// Extrair tipo de funil do nome da campanha UTM
+// Ex: [Masterclass04][IS][Vendas][quizz-01v1][1-1-X][BID][10.03.26]
+//                                 ^^^^^^^^^^^  -> tipo de funil
+function extractFunnelType(campaign) {
+  if (!campaign) return 'Sem funil'
+  // Pegar o 4º bloco entre colchetes (índice 3)
+  const matches = campaign.match(/\[([^\]]+)\]/g)
+  if (matches && matches.length >= 4) {
+    const funnelBlock = matches[3].replace(/[\[\]]/g, '')
+    return funnelBlock
+  }
+  // Tentar match direto nos padrões conhecidos
+  const patterns = ['quizz-01v1', 'quizz-03', 'pv-01-minivsl', 'pv-02', 'quiz', 'vsl', 'webinar']
+  for (const p of patterns) {
+    if (campaign.toLowerCase().includes(p)) return p
+  }
+  return 'Outro'
+}
+
+// Extrair estratégia de bid/escala
+function extractStrategy(campaign) {
+  if (!campaign) return 'Desconhecido'
+  const matches = campaign.match(/\[([^\]]+)\]/g)
+  if (matches) {
+    const lower = matches.map(m => m.replace(/[\[\]]/g, '').toLowerCase())
+    if (lower.some(m => m.includes('bid'))) return 'BID'
+    if (lower.some(m => m.includes('cbo'))) return 'CBO'
+    if (lower.some(m => m.includes('escala'))) return 'Escala'
+    if (lower.some(m => m.includes('teste'))) return 'Teste'
+    if (lower.some(m => m.includes('validado'))) return 'Validados'
+  }
+  return 'Outro'
+}
+
+function isSim(val) {
+  if (!val) return false
+  return ['sim', 'yes', 'true', '1'].includes(String(val).toLowerCase().trim())
+}
+
+export async function getFunnelAnalytics(opts = {}) {
   const sales = filterSales(getAllSalesWithUtm(), opts)
   const total = sales.length
-  if (total === 0) return { total: 0, orderbump: {}, upsell: {}, funis: [], checkouts: [], metodosPagamento: [], ofertaConversao: [] }
+  if (total === 0) return { total: 0, orderbump: {}, upsell: {}, tiposFunil: [], estrategias: [], funis: [], checkouts: [], metodosPagamento: [], ofertaConversao: [], taxaConversao: {} }
 
-  // Order Bump
+  // Buscar dados do Meta para calcular taxas de conversão
+  let metaCampaigns = []
+  try {
+    metaCampaigns = await getCampaignInsights(opts.dateOpts || 'this_month') || []
+  } catch (e) {
+    console.warn('[Analytics] Meta campaigns not available:', e.message)
+  }
+
+  // ===== TAXAS DE CONVERSÃO =====
+  const totalCliques = metaCampaigns.reduce((s, c) => s + (c.cliques || 0), 0)
+  const totalImpressoes = metaCampaigns.reduce((s, c) => s + (c.impressoes || 0), 0)
+  const totalAlcance = metaCampaigns.reduce((s, c) => s + (c.alcance || 0), 0)
+  const totalInvestido = metaCampaigns.reduce((s, c) => s + (c.investido || 0), 0)
+
+  const taxaConversao = {
+    clickToSale: totalCliques > 0 ? Math.round((total / totalCliques) * 10000) / 100 : 0,
+    impressionToSale: totalImpressoes > 0 ? Math.round((total / totalImpressoes) * 1000000) / 100 : 0,
+    alcanceToSale: totalAlcance > 0 ? Math.round((total / totalAlcance) * 10000) / 100 : 0,
+    totalCliques,
+    totalImpressoes,
+    totalAlcance,
+    totalInvestido,
+    cpc: totalCliques > 0 ? Math.round(totalInvestido / totalCliques * 100) / 100 : 0,
+    cpm: totalImpressoes > 0 ? Math.round(totalInvestido / totalImpressoes * 1000 * 100) / 100 : 0,
+    cpa: total > 0 ? Math.round(totalInvestido / total * 100) / 100 : 0,
+  }
+
+  // ===== ORDER BUMP =====
   const comOB = sales.filter(s => s.orderbump)
   const semOB = sales.filter(s => !s.orderbump)
   const orderbump = {
@@ -66,7 +125,7 @@ export function getFunnelAnalytics(opts = {}) {
     ticketSemOB: semOB.length > 0 ? Math.round(semOB.reduce((s, v) => s + v.valor, 0) / semOB.length * 100) / 100 : 0,
   }
 
-  // Upsell
+  // ===== UPSELL =====
   const comUpsell = sales.filter(s => s.upsell)
   const upsell = {
     total: comUpsell.length,
@@ -75,7 +134,84 @@ export function getFunnelAnalytics(opts = {}) {
     ticketComUpsell: comUpsell.length > 0 ? Math.round(comUpsell.reduce((s, v) => s + v.valor, 0) / comUpsell.length * 100) / 100 : 0,
   }
 
-  // Análise por funil
+  // ===== ANÁLISE POR TIPO DE FUNIL (quizz-01v1, pv-01-minivsl, etc) =====
+  const tipoFunilMap = {}
+  // Mapear cliques e investimento por tipo de funil do Meta
+  const metaByFunnelType = {}
+  metaCampaigns.forEach(mc => {
+    const tipo = extractFunnelType(mc.nome)
+    if (!metaByFunnelType[tipo]) metaByFunnelType[tipo] = { cliques: 0, impressoes: 0, investido: 0, alcance: 0 }
+    metaByFunnelType[tipo].cliques += mc.cliques || 0
+    metaByFunnelType[tipo].impressoes += mc.impressoes || 0
+    metaByFunnelType[tipo].investido += mc.investido || 0
+    metaByFunnelType[tipo].alcance += mc.alcance || 0
+  })
+
+  sales.forEach(s => {
+    const tipo = extractFunnelType(s.utm?.utm_campaign)
+    if (!tipoFunilMap[tipo]) tipoFunilMap[tipo] = { vendas: 0, receita: 0, orderbumps: 0, upsells: 0 }
+    tipoFunilMap[tipo].vendas++
+    tipoFunilMap[tipo].receita += s.valor
+    if (s.orderbump) tipoFunilMap[tipo].orderbumps++
+    if (s.upsell) tipoFunilMap[tipo].upsells++
+  })
+
+  const tiposFunil = Object.entries(tipoFunilMap)
+    .map(([tipo, data]) => {
+      const meta = metaByFunnelType[tipo] || {}
+      const connectRate = meta.cliques > 0 ? Math.round((data.vendas / meta.cliques) * 10000) / 100 : null
+      const roas = meta.investido > 0 ? Math.round((data.receita / meta.investido) * 100) / 100 : null
+      return {
+        tipo,
+        ...data,
+        ticketMedio: Math.round(data.receita / data.vendas * 100) / 100,
+        taxaOB: Math.round((data.orderbumps / data.vendas) * 10000) / 100,
+        taxaUpsell: Math.round((data.upsells / data.vendas) * 10000) / 100,
+        // Dados do Meta
+        cliques: meta.cliques || 0,
+        impressoes: meta.impressoes || 0,
+        investido: meta.investido || 0,
+        // Taxas calculadas
+        connectRate,
+        cpa: data.vendas > 0 && meta.investido > 0 ? Math.round(meta.investido / data.vendas * 100) / 100 : null,
+        roas,
+      }
+    })
+    .sort((a, b) => b.vendas - a.vendas)
+
+  // ===== ANÁLISE POR ESTRATÉGIA (BID, CBO, Escala, Teste) =====
+  const estrategiaMap = {}
+  const metaByStrategy = {}
+  metaCampaigns.forEach(mc => {
+    const est = extractStrategy(mc.nome)
+    if (!metaByStrategy[est]) metaByStrategy[est] = { cliques: 0, investido: 0 }
+    metaByStrategy[est].cliques += mc.cliques || 0
+    metaByStrategy[est].investido += mc.investido || 0
+  })
+
+  sales.forEach(s => {
+    const est = extractStrategy(s.utm?.utm_campaign)
+    if (!estrategiaMap[est]) estrategiaMap[est] = { vendas: 0, receita: 0 }
+    estrategiaMap[est].vendas++
+    estrategiaMap[est].receita += s.valor
+  })
+
+  const estrategias = Object.entries(estrategiaMap)
+    .map(([estrategia, data]) => {
+      const meta = metaByStrategy[estrategia] || {}
+      return {
+        estrategia,
+        ...data,
+        cliques: meta.cliques || 0,
+        investido: meta.investido || 0,
+        connectRate: meta.cliques > 0 ? Math.round((data.vendas / meta.cliques) * 10000) / 100 : null,
+        cpa: data.vendas > 0 && meta.investido > 0 ? Math.round(meta.investido / data.vendas * 100) / 100 : null,
+        roas: meta.investido > 0 ? Math.round((data.receita / meta.investido) * 100) / 100 : null,
+      }
+    })
+    .sort((a, b) => b.vendas - a.vendas)
+
+  // ===== FUNIS (do campo funil do CSV) =====
   const funilMap = {}
   sales.forEach(s => {
     const f = s.funil || 'Sem funil'
@@ -87,15 +223,13 @@ export function getFunnelAnalytics(opts = {}) {
   })
   const funis = Object.entries(funilMap)
     .map(([nome, data]) => ({
-      nome,
-      ...data,
+      nome, ...data,
       ticketMedio: Math.round(data.receita / data.vendas * 100) / 100,
       taxaOB: Math.round((data.orderbumps / data.vendas) * 10000) / 100,
-      taxaUpsell: Math.round((data.upsells / data.vendas) * 10000) / 100,
     }))
     .sort((a, b) => b.vendas - a.vendas)
 
-  // Análise por checkout
+  // ===== CHECKOUTS =====
   const checkoutMap = {}
   sales.forEach(s => {
     const c = s.checkout || 'Sem checkout'
@@ -106,14 +240,13 @@ export function getFunnelAnalytics(opts = {}) {
   })
   const checkouts = Object.entries(checkoutMap)
     .map(([nome, data]) => ({
-      nome,
-      ...data,
+      nome, ...data,
       ticketMedio: Math.round(data.receita / data.vendas * 100) / 100,
       taxaOB: Math.round((data.orderbumps / data.vendas) * 10000) / 100,
     }))
     .sort((a, b) => b.vendas - a.vendas)
 
-  // Métodos de pagamento
+  // ===== MÉTODOS DE PAGAMENTO =====
   const metodoMap = {}
   sales.forEach(s => {
     const m = s.metodo_pagamento || 'Desconhecido'
@@ -125,7 +258,7 @@ export function getFunnelAnalytics(opts = {}) {
     .map(([metodo, data]) => ({ metodo, ...data, pct: Math.round((data.vendas / total) * 10000) / 100 }))
     .sort((a, b) => b.vendas - a.vendas)
 
-  // Conversão por oferta
+  // ===== OFERTA =====
   const ofertaMap = {}
   sales.forEach(s => {
     const o = s.oferta || s.produto || 'Sem oferta'
@@ -137,8 +270,7 @@ export function getFunnelAnalytics(opts = {}) {
   })
   const ofertaConversao = Object.entries(ofertaMap)
     .map(([oferta, data]) => ({
-      oferta,
-      ...data,
+      oferta, ...data,
       ticketMedio: Math.round(data.receita / data.vendas * 100) / 100,
       taxaOB: Math.round((data.orderbumps / data.vendas) * 10000) / 100,
     }))
@@ -149,8 +281,11 @@ export function getFunnelAnalytics(opts = {}) {
     total,
     receitaTotal: sales.reduce((s, v) => s + v.valor, 0),
     ticketMedio: Math.round(sales.reduce((s, v) => s + v.valor, 0) / total * 100) / 100,
+    taxaConversao,
     orderbump,
     upsell,
+    tiposFunil: tiposFunil.slice(0, 10),
+    estrategias,
     funis: funis.slice(0, 10),
     checkouts: checkouts.slice(0, 10),
     metodosPagamento,
@@ -162,7 +297,6 @@ export function getCreativeAnalytics(opts = {}) {
   const sales = filterSales(getAllSalesWithUtm(), opts)
   if (sales.length === 0) return { criativos: [], contas: [] }
 
-  // Agrupar por criativo (utm_content)
   const criativoMap = {}
   sales.forEach(s => {
     const creative = s.utm?.utm_content || 'Sem criativo'
@@ -177,8 +311,7 @@ export function getCreativeAnalytics(opts = {}) {
 
   const criativos = Object.entries(criativoMap)
     .map(([nome, data]) => ({
-      nome,
-      ...data,
+      nome, ...data,
       ticketMedio: Math.round(data.receita / data.vendas * 100) / 100,
       pctVendas: Math.round((data.vendas / totalVendas) * 10000) / 100,
       pctReceita: Math.round((data.receita / totalReceita) * 10000) / 100,
@@ -186,17 +319,10 @@ export function getCreativeAnalytics(opts = {}) {
     }))
     .sort((a, b) => b.vendas - a.vendas)
 
-  // Contas disponíveis para filtro
   const contaSet = new Set()
   getAllSalesWithUtm().forEach(s => { if (s.conta) contaSet.add(s.conta) })
-  const contas = ['todas', ...Array.from(contaSet).sort()]
 
-  return {
-    criativos: criativos.slice(0, 30),
-    totalVendas,
-    totalReceita,
-    contas,
-  }
+  return { criativos: criativos.slice(0, 30), totalVendas, totalReceita, contas: ['todas', ...Array.from(contaSet).sort()] }
 }
 
 export function getAvailableAccounts() {
