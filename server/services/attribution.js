@@ -1,13 +1,55 @@
 import { getCache, setCache } from '../utils/cache.js'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
 
-const salesWithUtm = []
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const DATA_DIR = join(__dirname, '..', 'data')
+const SALES_FILE = join(DATA_DIR, 'sales.json')
 const MAX_SALES = 100000
+
+// Carregar vendas do arquivo ao iniciar
+let salesWithUtm = loadFromDisk()
+console.log(`📂 ${salesWithUtm.length} vendas carregadas do disco`)
+
+function loadFromDisk() {
+  try {
+    if (existsSync(SALES_FILE)) {
+      const data = JSON.parse(readFileSync(SALES_FILE, 'utf-8'))
+      return Array.isArray(data) ? data : []
+    }
+  } catch (e) {
+    console.warn('[Attribution] Erro ao carregar sales.json:', e.message)
+  }
+  return []
+}
+
+let saveTimeout = null
+function saveToDisk() {
+  // Debounce — salva no máximo 1x a cada 2 segundos
+  if (saveTimeout) return
+  saveTimeout = setTimeout(() => {
+    try {
+      if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
+      writeFileSync(SALES_FILE, JSON.stringify(salesWithUtm))
+    } catch (e) {
+      console.warn('[Attribution] Erro ao salvar sales.json:', e.message)
+    }
+    saveTimeout = null
+  }, 2000)
+}
 
 export function addSaleWithUtm(sale) {
   salesWithUtm.unshift(sale)
   if (salesWithUtm.length > MAX_SALES) {
     salesWithUtm.length = MAX_SALES
   }
+  saveToDisk()
+}
+
+export function clearSales() {
+  salesWithUtm = []
+  saveToDisk()
 }
 
 export function getAllSalesWithUtm() {
