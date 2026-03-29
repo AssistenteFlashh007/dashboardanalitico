@@ -1,10 +1,17 @@
 import { useState } from 'react'
-import { Upload, CheckCircle, AlertCircle } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, Trash2 } from 'lucide-react'
 
 export default function CsvUpload({ onImported }) {
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
   const [platform, setPlatform] = useState('pagtrust')
+
+  async function handleClear() {
+    if (!confirm('Limpar todos os dados de vendas? Você precisará reimportar.')) return
+    await fetch('/api/import/clear', { method: 'DELETE' })
+    setResult({ success: true, message: 'Dados limpos. Reimporte as planilhas.' })
+    onImported?.()
+  }
 
   async function handleUpload(e) {
     const file = e.target.files?.[0]
@@ -91,6 +98,14 @@ export default function CsvUpload({ onImported }) {
             className="hidden"
           />
         </label>
+
+        <button
+          onClick={handleClear}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-danger/30 text-danger text-sm font-medium hover:bg-danger/10 transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          Limpar dados
+        </button>
       </div>
 
       {result && (

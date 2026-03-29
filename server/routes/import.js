@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { importCsv, importXlsx } from '../services/csvImport.js'
+import { clearSales } from '../services/attribution.js'
 
 const router = Router()
 
@@ -47,6 +48,13 @@ router.post('/xlsx', rawBody, (req, res) => {
     console.error('[XLSX Import]', error.message)
     res.status(500).json({ success: false, error: error.message })
   }
+})
+
+// DELETE /api/import/clear — Limpar todos os dados de vendas
+router.delete('/clear', (req, res) => {
+  clearSales()
+  console.log('[Import] Todos os dados de vendas foram limpos')
+  res.json({ success: true, message: 'Dados limpos' })
 })
 
 export default router
