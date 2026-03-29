@@ -1,4 +1,5 @@
 import { getCache, setCache } from '../utils/cache.js'
+import { getUsdToBrl, convertUsdToBrl } from '../utils/currency.js'
 
 const GRAPH_API = 'https://graph.facebook.com/v21.0'
 
@@ -37,15 +38,20 @@ const ACCOUNT_NAMES = {
   'act_948441777628994': 'Bru Masterclass 05',
 }
 
-function parseInsights(insights) {
+function parseInsights(insights, rate) {
+  const spendUsd = parseFloat(insights.spend || 0)
+  const cpcUsd = parseFloat(insights.cpc || 0)
+  const cpmUsd = parseFloat(insights.cpm || 0)
+
   const result = {
-    spend: parseFloat(insights.spend || 0),
+    spend: convertUsdToBrl(spendUsd, rate),
+    spendUsd,
     impressions: parseInt(insights.impressions || 0),
     reach: parseInt(insights.reach || 0),
     clicks: parseInt(insights.clicks || 0),
     ctr: parseFloat(insights.ctr || 0),
-    cpc: parseFloat(insights.cpc || 0),
-    cpm: parseFloat(insights.cpm || 0),
+    cpc: convertUsdToBrl(cpcUsd, rate),
+    cpm: convertUsdToBrl(cpmUsd, rate),
     roas: parseFloat(insights.purchase_roas?.[0]?.value || 0),
     conversions: 0,
     cpa: 0,
@@ -57,7 +63,7 @@ function parseInsights(insights) {
   }
   const cpaAction = insights.cost_per_action_type?.find(a => a.action_type === 'purchase')
   if (cpaAction) {
-    result.cpa = parseFloat(cpaAction.value || 0)
+    result.cpa = convertUsdToBrl(parseFloat(cpaAction.value || 0), rate)
   }
 
   return result
@@ -69,6 +75,7 @@ export async function getAccountInsights(datePreset = 'last_30d') {
   if (cached) return cached
 
   const accountIds = getAccountIds()
+  const rate = await getUsdToBrl()
   const fields = [
     'spend', 'impressions', 'reach', 'clicks',
     'ctr', 'cpc', 'cpm', 'actions',
@@ -113,7 +120,7 @@ export async function getAccountInsights(datePreset = 'last_30d') {
   const perAccount = []
 
   successful.forEach(({ accountId, accountName, insights }) => {
-    const parsed = parseInsights(insights)
+    const parsed = parseInsights(insights, rate)
     perAccount.push({ accountId, accountName, ...parsed })
 
     aggregated.spend += parsed.spend
@@ -135,13 +142,14 @@ export async function getAccountInsights(datePreset = 'last_30d') {
     aggregated.cpa = aggregated.spend / aggregated.conversions
   }
   if (aggregated.spend > 0) {
-    // ROAS = receita média ponderada
+    // ROAS = receita média ponderada (usando spend em USD para peso correto)
+    const totalSpendUsd = perAccount.reduce((sum, a) => sum + (a.spendUsd || 0), 0)
     const totalRoasWeighted = successful.reduce((sum, { insights }) => {
       const s = parseFloat(insights.spend || 0)
       const r = parseFloat(insights.purchase_roas?.[0]?.value || 0)
       return sum + (s * r)
     }, 0)
-    aggregated.roas = totalRoasWeighted / aggregated.spend
+    aggregated.roas = totalSpendUsd > 0 ? totalRoasWeighted / totalSpendUsd : 0
   }
 
   // Arredondar
@@ -153,6 +161,8 @@ export async function getAccountInsights(datePreset = 'last_30d') {
 
   const result = {
     ...aggregated,
+    moeda: 'BRL',
+    cotacaoUsada: rate,
     perAccount,
     errors: errors.length > 0 ? errors : undefined,
     totalAccounts: accountIds.length,
@@ -169,6 +179,7 @@ export async function getCampaignInsights(datePreset = 'last_30d') {
   if (cached) return cached
 
   const accountIds = getAccountIds()
+  const rate = await getUsdToBrl()
   const fields = [
     'campaign_name', 'campaign_id',
     'spend', 'impressions', 'reach', 'clicks',
@@ -186,22 +197,26 @@ export async function getCampaignInsights(datePreset = 'last_30d') {
         limit: '50',
       })
       const accountName = ACCOUNT_NAMES[accountId] || accountId
-      return (data.data || []).map(c => ({
-        id: c.campaign_id,
-        nome: c.campaign_name,
-        conta: accountName,
-        plataforma: 'Meta Ads',
-        investido: parseFloat(c.spend || 0),
-        impressoes: parseInt(c.impressions || 0),
-        alcance: parseInt(c.reach || 0),
-        cliques: parseInt(c.clicks || 0),
-        ctr: parseFloat(c.ctr || 0),
-        roas: parseFloat(c.purchase_roas?.[0]?.value || 0),
-        conversoes: parseInt(c.actions?.find(a => a.action_type === 'purchase')?.value || 0),
-        cpa: parseFloat(c.cost_per_action_type?.find(a => a.action_type === 'purchase')?.value || 0),
-        receita: 0,
-        status: 'ativa',
-      }))
+      return (data.data || []).map(c => {
+        const spendUsd = parseFloat(c.spend || 0)
+        const cpaUsd = parseFloat(c.cost_per_action_type?.find(a => a.action_type === 'purchase')?.value || 0)
+        return {
+          id: c.campaign_id,
+          nome: c.campaign_name,
+          conta: accountName,
+          plataforma: 'Meta Ads',
+          investido: convertUsdToBrl(spendUsd, rate),
+          impressoes: parseInt(c.impressions || 0),
+          alcance: parseInt(c.reach || 0),
+          cliques: parseInt(c.clicks || 0),
+          ctr: parseFloat(c.ctr || 0),
+          roas: parseFloat(c.purchase_roas?.[0]?.value || 0),
+          conversoes: parseInt(c.actions?.find(a => a.action_type === 'purchase')?.value || 0),
+          cpa: convertUsdToBrl(cpaUsd, rate),
+          receita: 0,
+          status: 'ativa',
+        }
+      })
     })
   )
 
@@ -227,6 +242,7 @@ export async function getDailyInsights(datePreset = 'last_7d') {
   if (cached) return cached
 
   const accountIds = getAccountIds()
+  const rate = await getUsdToBrl()
 
   const results = await Promise.allSettled(
     accountIds.map(async (accountId) => {
@@ -251,7 +267,7 @@ export async function getDailyInsights(datePreset = 'last_7d') {
       if (!dayMap[key]) {
         dayMap[key] = { data: key, gastos: 0, impressoes: 0, alcance: 0, cliques: 0 }
       }
-      dayMap[key].gastos += parseFloat(d.spend || 0)
+      dayMap[key].gastos += convertUsdToBrl(parseFloat(d.spend || 0), rate)
       dayMap[key].impressoes += parseInt(d.impressions || 0)
       dayMap[key].alcance += parseInt(d.reach || 0)
       dayMap[key].cliques += parseInt(d.clicks || 0)
