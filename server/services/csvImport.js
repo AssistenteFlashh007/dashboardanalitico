@@ -130,6 +130,13 @@ function processRecords(records, platform) {
         produto = produto.split('|')[0].trim()
       }
 
+      // Ignorar produtos excluídos
+      const excluded = ['venda express']
+      if (excluded.some(e => produto.toLowerCase().includes(e))) {
+        skipped++
+        continue
+      }
+
       addSaleWithUtm({
         id: row[colMap.id] || `csv_${platform}_${imported}`,
         plataforma: platform,
