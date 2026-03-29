@@ -2,7 +2,7 @@ import { getCache, setCache } from '../utils/cache.js'
 
 // Armazena todas as vendas com UTM para cruzamento
 const salesWithUtm = []
-const MAX_SALES = 5000
+const MAX_SALES = 100000
 
 export function addSaleWithUtm(sale) {
   salesWithUtm.unshift(sale)

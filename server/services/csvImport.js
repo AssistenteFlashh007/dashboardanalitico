@@ -1,39 +1,31 @@
 import { parse } from 'csv-parse/sync'
+import * as XLSX from 'xlsx'
 import { addSaleWithUtm } from './attribution.js'
 
-// Mapeamento flexível de colunas — suporta diferentes formatos de CSV
+// Mapeamento de colunas — cobre Pagtrust e Hubla
 const COLUMN_MAPS = {
-  // Valor da venda
-  valor: ['valor', 'value', 'amount', 'price', 'preco', 'preço', 'receita', 'revenue', 'total', 'net_amount', 'valor_liquido', 'gross_amount'],
-  // Nome do produto
-  produto: ['produto', 'product', 'product_name', 'nome_produto', 'item', 'offer', 'oferta', 'nome_oferta'],
-  // Nome do comprador
-  comprador: ['comprador', 'buyer', 'buyer_name', 'nome', 'name', 'cliente', 'customer', 'customer_name'],
-  // Email
-  email: ['email', 'buyer_email', 'email_comprador', 'customer_email', 'e-mail'],
-  // Data
-  data: ['data', 'date', 'created_at', 'paid_at', 'approved_date', 'data_aprovacao', 'data_pagamento', 'payment_date', 'data_compra', 'purchase_date'],
-  // Status
-  status: ['status', 'payment_status', 'status_pagamento', 'transaction_status'],
-  // UTMs
-  utm_source: ['utm_source', 'source', 'fonte', 'src'],
-  utm_medium: ['utm_medium', 'medium', 'meio'],
-  utm_campaign: ['utm_campaign', 'campaign', 'campanha'],
-  utm_content: ['utm_content', 'content', 'conteudo', 'conteúdo'],
-  utm_term: ['utm_term', 'term', 'termo'],
-  // ID
-  id: ['id', 'transaction_id', 'invoice_id', 'order_id', 'pedido', 'codigo', 'code'],
+  valor: ['valor_liquido', 'valor', 'value', 'amount', 'price', 'preco', 'preço', 'receita', 'revenue', 'total', 'net_amount', 'valor_transacionado', 'preco_base_do_produto', 'gross_amount'],
+  produto: ['produtos', 'produto', 'nome_do_produto', 'nome do produto', 'product', 'product_name', 'nome_produto', 'item', 'nome_oferta', 'nome da oferta'],
+  comprador: ['comprador', 'nome_do_cliente', 'nome do cliente', 'buyer', 'buyer_name', 'nome', 'name', 'cliente', 'customer', 'customer_name'],
+  email: ['email', 'email_do_cliente', 'email do cliente', 'buyer_email', 'email_comprador', 'customer_email', 'e-mail'],
+  data: ['data', 'data_de_pagamento', 'data de pagamento', 'data_de_criacao', 'data de criação', 'date', 'created_at', 'paid_at', 'approved_date', 'data_aprovacao', 'data_pagamento', 'payment_date'],
+  status: ['status', 'status_da_fatura', 'status da fatura', 'payment_status', 'status_pagamento', 'transaction_status'],
+  utm_source: ['utmsource', 'utm_source', 'utm_origem', 'utm origem', 'source', 'fonte', 'src'],
+  utm_medium: ['utmmedium', 'utm_medium', 'utm_midia', 'utm mídia', 'medium', 'meio'],
+  utm_campaign: ['utmcampaign', 'utm_campaign', 'campaign', 'campanha'],
+  utm_content: ['utmcontent', 'utm_content', 'content', 'conteudo', 'conteúdo'],
+  utm_term: ['utmterm', 'utm_term', 'term', 'termo'],
+  id: ['codigo_da_venda', 'id', 'transaction_id', 'invoice_id', 'order_id', 'pedido', 'codigo', 'code'],
 }
 
 function findColumn(headers, fieldNames) {
   const normalized = headers.map(h => h.toLowerCase().trim().replace(/[^a-z0-9_]/g, '_'))
   for (const name of fieldNames) {
-    const idx = normalized.indexOf(name.toLowerCase())
+    const idx = normalized.indexOf(name.toLowerCase().replace(/[^a-z0-9_]/g, '_'))
     if (idx !== -1) return headers[idx]
   }
-  // Tentar match parcial
   for (const name of fieldNames) {
-    const idx = normalized.findIndex(h => h.includes(name.toLowerCase()))
+    const idx = normalized.findIndex(h => h.includes(name.toLowerCase().replace(/[^a-z0-9_]/g, '_')))
     if (idx !== -1) return headers[idx]
   }
   return null
@@ -41,7 +33,6 @@ function findColumn(headers, fieldNames) {
 
 function parseValue(val) {
   if (val == null || val === '') return 0
-  // Remover R$, US$, etc
   const cleaned = String(val).replace(/[R$US\s]/g, '').replace(',', '.')
   const num = parseFloat(cleaned)
   return isNaN(num) ? 0 : num
@@ -49,62 +40,42 @@ function parseValue(val) {
 
 function parseDate(val) {
   if (!val) return new Date().toISOString()
-  // Tentar formatos comuns: DD/MM/YYYY, YYYY-MM-DD, etc
   const str = String(val).trim()
-
-  // DD/MM/YYYY HH:MM:SS ou DD/MM/YYYY
+  // DD/MM/YYYY HH:MM:SS
   const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(.*)$/)
   if (brMatch) {
     const [, day, month, year, rest] = brMatch
     return new Date(`${year}-${month}-${day}${rest || 'T00:00:00'}`).toISOString()
   }
-
-  // Tentar parse nativo
   const d = new Date(str)
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
 }
 
-export function importCsv(csvContent, platform = 'hubla') {
-  // Detectar delimitador
-  const firstLine = csvContent.split('\n')[0]
-  const delimiter = firstLine.includes(';') ? ';' : ','
-
-  const records = parse(csvContent, {
-    columns: true,
-    skip_empty_lines: true,
-    delimiter,
-    trim: true,
-    bom: true,
-    relax_column_count: true,
-  })
-
+function processRecords(records, platform) {
   if (records.length === 0) {
-    return { imported: 0, skipped: 0, errors: ['CSV vazio ou sem dados'] }
+    return { imported: 0, skipped: 0, errors: ['Arquivo vazio ou sem dados'], totalRows: 0 }
   }
 
   const headers = Object.keys(records[0])
-
-  // Mapear colunas
   const colMap = {}
   for (const [field, names] of Object.entries(COLUMN_MAPS)) {
     colMap[field] = findColumn(headers, names)
   }
 
+  console.log(`[CSV Import] Colunas: ${headers.join(', ')}`)
+  console.log(`[CSV Import] Mapeamento:`, JSON.stringify(colMap))
+
   let imported = 0
   let skipped = 0
   const errors = []
 
-  // Log das colunas encontradas
-  console.log(`[CSV Import] Colunas detectadas:`, headers.join(', '))
-  console.log(`[CSV Import] Mapeamento:`, JSON.stringify(colMap, null, 2))
-
   for (const row of records) {
     try {
-      // Verificar status — pular se não for venda aprovada
+      // Filtrar por status
       if (colMap.status) {
         const status = (row[colMap.status] || '').toLowerCase()
-        const rejected = ['refunded', 'reembolsado', 'canceled', 'cancelado', 'refused', 'recusado', 'chargeback', 'expired', 'expirado', 'pending', 'pendente']
-        if (rejected.some(r => status.includes(r))) {
+        const approved = ['aprovado', 'approved', 'pago', 'paga', 'paid', 'completo', 'completed']
+        if (!approved.some(a => status.includes(a))) {
           skipped++
           continue
         }
@@ -116,18 +87,32 @@ export function importCsv(csvContent, platform = 'hubla') {
         continue
       }
 
+      // Extrair UTM campaign — limpar pipes e IDs do Meta
+      let utmCampaign = row[colMap.utm_campaign] || null
+      if (utmCampaign) {
+        // Pagtrust às vezes coloca "NomeCampanha|ID" — pegar só o nome
+        const parts = utmCampaign.split('|')
+        utmCampaign = parts[0].trim()
+      }
+
       const utm = {
         utm_source: row[colMap.utm_source] || null,
         utm_medium: row[colMap.utm_medium] || null,
-        utm_campaign: row[colMap.utm_campaign] || null,
+        utm_campaign: utmCampaign,
         utm_content: row[colMap.utm_content] || null,
         utm_term: row[colMap.utm_term] || null,
+      }
+
+      // Produto — pegar o primeiro se tiver múltiplos separados por |
+      let produto = row[colMap.produto] || 'Produto importado'
+      if (produto.includes('|')) {
+        produto = produto.split('|')[0].trim()
       }
 
       addSaleWithUtm({
         id: row[colMap.id] || `csv_${platform}_${imported}`,
         plataforma: platform,
-        produto: row[colMap.produto] || 'Produto importado',
+        produto,
         valor,
         data: parseDate(row[colMap.data]),
         comprador: row[colMap.comprador] || '',
@@ -141,7 +126,7 @@ export function importCsv(csvContent, platform = 'hubla') {
     }
   }
 
-  console.log(`[CSV Import] Importado: ${imported} | Pulado: ${skipped} | Erros: ${errors.length}`)
+  console.log(`[CSV Import] ${platform}: ${imported} importadas | ${skipped} puladas | ${errors.length} erros`)
 
   return {
     imported,
@@ -151,4 +136,31 @@ export function importCsv(csvContent, platform = 'hubla') {
     columnsDetected: colMap,
     headers,
   }
+}
+
+export function importCsv(csvContent, platform = 'pagtrust') {
+  const firstLine = csvContent.split('\n')[0]
+  const delimiter = firstLine.includes(';') ? ';' : ','
+
+  const records = parse(csvContent, {
+    columns: true,
+    skip_empty_lines: true,
+    delimiter,
+    trim: true,
+    bom: true,
+    relax_column_count: true,
+    relax_quotes: true,
+    quote: false,
+  })
+
+  return processRecords(records, platform)
+}
+
+export function importXlsx(buffer, platform = 'hubla') {
+  const workbook = XLSX.read(buffer, { type: 'buffer' })
+  const sheetName = workbook.SheetNames[0]
+  const sheet = workbook.Sheets[sheetName]
+  const records = XLSX.utils.sheet_to_json(sheet)
+
+  return processRecords(records, platform)
 }

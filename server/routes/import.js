@@ -1,19 +1,29 @@
 import { Router } from 'express'
-import { importCsv } from '../services/csvImport.js'
+import { importCsv, importXlsx } from '../services/csvImport.js'
 
 const router = Router()
 
-// POST /api/import/csv — Importar CSV de vendas históricas
-router.post('/csv', express_raw(), (req, res) => {
-  try {
-    const platform = req.query.platform || 'hubla'
-    const csvContent = req.body
+// Middleware para receber raw body (CSV ou XLSX)
+function rawBody(req, res, next) {
+  const chunks = []
+  req.on('data', chunk => chunks.push(chunk))
+  req.on('end', () => {
+    req.rawBody = Buffer.concat(chunks)
+    next()
+  })
+}
 
-    if (!csvContent || csvContent.length === 0) {
-      return res.status(400).json({ success: false, error: 'Envie o conteúdo do CSV no body' })
+// POST /api/import/csv — Importar CSV de vendas
+router.post('/csv', rawBody, (req, res) => {
+  try {
+    const platform = req.query.platform || 'pagtrust'
+    const content = req.rawBody
+
+    if (!content || content.length === 0) {
+      return res.status(400).json({ success: false, error: 'Envie o conteúdo do CSV' })
     }
 
-    const result = importCsv(csvContent.toString('utf-8'), platform)
+    const result = importCsv(content.toString('utf-8'), platform)
     res.json({ success: true, data: result })
   } catch (error) {
     console.error('[CSV Import]', error.message)
@@ -21,51 +31,20 @@ router.post('/csv', express_raw(), (req, res) => {
   }
 })
 
-function express_raw() {
-  return (req, res, next) => {
-    if (req.headers['content-type']?.includes('text/csv') ||
-        req.headers['content-type']?.includes('text/plain')) {
-      let body = ''
-      req.setEncoding('utf8')
-      req.on('data', chunk => body += chunk)
-      req.on('end', () => { req.body = body; next() })
-    } else {
-      next()
-    }
-  }
-}
-
-// POST /api/import/json — Importar vendas em JSON (alternativa)
-router.post('/json', (req, res) => {
+// POST /api/import/xlsx — Importar Excel de vendas
+router.post('/xlsx', rawBody, (req, res) => {
   try {
-    const { sales, platform = 'hubla' } = req.body
-    if (!sales || !Array.isArray(sales)) {
-      return res.status(400).json({ success: false, error: 'Envie { sales: [...] }' })
+    const platform = req.query.platform || 'hubla'
+    const content = req.rawBody
+
+    if (!content || content.length === 0) {
+      return res.status(400).json({ success: false, error: 'Envie o arquivo XLSX' })
     }
 
-    const { addSaleWithUtm } = require('../services/attribution.js')
-    let imported = 0
-    for (const sale of sales) {
-      addSaleWithUtm({
-        id: sale.id || `json_${imported}`,
-        plataforma: platform,
-        produto: sale.produto || sale.product || 'Produto',
-        valor: sale.valor || sale.value || sale.price || 0,
-        data: sale.data || sale.date || new Date().toISOString(),
-        comprador: sale.comprador || sale.buyer || '',
-        utm: {
-          utm_source: sale.utm_source || null,
-          utm_medium: sale.utm_medium || null,
-          utm_campaign: sale.utm_campaign || null,
-          utm_content: sale.utm_content || null,
-          utm_term: sale.utm_term || null,
-        },
-      })
-      imported++
-    }
-
-    res.json({ success: true, data: { imported } })
+    const result = importXlsx(content, platform)
+    res.json({ success: true, data: result })
   } catch (error) {
+    console.error('[XLSX Import]', error.message)
     res.status(500).json({ success: false, error: error.message })
   }
 })

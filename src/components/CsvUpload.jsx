@@ -4,7 +4,7 @@ import { Upload, CheckCircle, AlertCircle } from 'lucide-react'
 export default function CsvUpload({ onImported }) {
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
-  const [platform, setPlatform] = useState('hubla')
+  const [platform, setPlatform] = useState('pagtrust')
 
   async function handleUpload(e) {
     const file = e.target.files?.[0]
@@ -14,18 +14,28 @@ export default function CsvUpload({ onImported }) {
     setResult(null)
 
     try {
-      const content = await file.text()
-      const res = await fetch(`/api/import/csv?platform=${platform}`, {
+      const isXlsx = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
+      const endpoint = isXlsx ? '/api/import/xlsx' : '/api/import/csv'
+      const contentType = isXlsx ? 'application/octet-stream' : 'text/csv'
+
+      let body
+      if (isXlsx) {
+        body = await file.arrayBuffer()
+      } else {
+        body = await file.text()
+      }
+
+      const res = await fetch(`${endpoint}?platform=${platform}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/csv' },
-        body: content,
+        headers: { 'Content-Type': contentType },
+        body,
       })
       const data = await res.json()
 
       if (data.success) {
         setResult({
           success: true,
-          message: `${data.data.imported} vendas importadas, ${data.data.skipped} puladas`,
+          message: `${data.data.imported} vendas importadas, ${data.data.skipped} puladas (de ${data.data.totalRows} linhas)`,
           details: data.data,
         })
         onImported?.()
@@ -42,15 +52,14 @@ export default function CsvUpload({ onImported }) {
 
   return (
     <div className="bg-dark-card rounded-2xl p-5 border border-dark-border">
-      <h3 className="text-lg font-semibold text-text-primary mb-2">Importar Vendas (CSV)</h3>
+      <h3 className="text-lg font-semibold text-text-primary mb-2">Importar Vendas (CSV / Excel)</h3>
       <p className="text-xs text-text-secondary mb-4">
-        Exporte o CSV da Hubla ou Pagtrust e faça upload para cruzar vendas antigas com campanhas do Meta Ads
+        Exporte o CSV da Pagtrust ou XLSX da Hubla para cruzar vendas com campanhas do Meta Ads
       </p>
 
       <div className="flex items-center gap-3">
-        {/* Seletor de plataforma */}
         <div className="flex bg-dark rounded-lg border border-dark-border p-0.5">
-          {['hubla', 'pagtrust'].map(p => (
+          {['pagtrust', 'hubla'].map(p => (
             <button
               key={p}
               onClick={() => setPlatform(p)}
@@ -65,7 +74,6 @@ export default function CsvUpload({ onImported }) {
           ))}
         </div>
 
-        {/* Upload */}
         <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors ${
           uploading
             ? 'bg-dark-border/50 border-dark-border text-text-secondary cursor-wait'
@@ -73,11 +81,11 @@ export default function CsvUpload({ onImported }) {
         }`}>
           <Upload className="w-4 h-4" />
           <span className="text-sm font-medium">
-            {uploading ? 'Importando...' : 'Selecionar CSV'}
+            {uploading ? 'Importando...' : platform === 'hubla' ? 'Selecionar XLSX' : 'Selecionar CSV'}
           </span>
           <input
             type="file"
-            accept=".csv,.txt"
+            accept=".csv,.txt,.xlsx,.xls"
             onChange={handleUpload}
             disabled={uploading}
             className="hidden"
@@ -85,7 +93,6 @@ export default function CsvUpload({ onImported }) {
         </label>
       </div>
 
-      {/* Resultado */}
       {result && (
         <div className={`mt-3 p-3 rounded-lg flex items-start gap-2 ${
           result.success
