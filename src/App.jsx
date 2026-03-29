@@ -11,6 +11,7 @@ import WeeklyChart from './components/WeeklyChart'
 import TopPages from './components/TopPages'
 import SalesTable from './components/SalesTable'
 import AttributionTable from './components/AttributionTable'
+import ProductSales from './components/ProductSales'
 import CsvUpload from './components/CsvUpload'
 import LoadingSkeleton from './components/LoadingSkeleton'
 import useDashboardData from './hooks/useDashboardData'
@@ -100,6 +101,9 @@ export default function App() {
 
         {/* Tabela de Campanhas — com vendas reais via UTM */}
         <CampaignTable data={data.campaigns} attribution={data.attribution} />
+
+        {/* Volume de Vendas por Produto */}
+        <ProductSales data={data.attribution} />
 
         {/* Importar CSV + Atribuição UTM */}
         <CsvUpload onImported={refetch} />

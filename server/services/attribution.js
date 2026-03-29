@@ -14,23 +14,33 @@ export function getAllSalesWithUtm() {
   return salesWithUtm
 }
 
-// Filtrar vendas por período
+// Converter data para string YYYY-MM-DD no fuso de Brasília (UTC-3)
+function toDateBR(date) {
+  const d = new Date(date)
+  // Subtrair 3 horas para fuso de Brasília
+  d.setHours(d.getHours() - 3)
+  return d.toISOString().split('T')[0]
+}
+
+// Filtrar vendas por período (usando fuso de Brasília)
 function filterByDate(sales, since, until) {
   if (!since && !until) return sales
-  const start = since ? new Date(since + 'T00:00:00') : new Date(0)
-  const end = until ? new Date(until + 'T23:59:59') : new Date()
   return sales.filter(s => {
-    const d = new Date(s.data)
-    return d >= start && d <= end
+    const dateBR = toDateBR(s.data)
+    if (since && dateBR < since) return false
+    if (until && dateBR > until) return false
+    return true
   })
 }
 
-// Resolver datas de presets do Meta para since/until
+// Resolver datas de presets para since/until (fuso de Brasília)
 function resolveDates(opts) {
   const { period, since, until } = typeof opts === 'string' ? { period: opts } : opts
   if (since && until) return { since, until }
 
+  // Data atual em Brasília
   const now = new Date()
+  now.setHours(now.getHours() - 3)
   const fmt = d => d.toISOString().split('T')[0]
 
   switch (period) {
@@ -105,6 +115,7 @@ export function buildAttribution(metaCampaigns, dateOpts = {}, platform = 'todas
 
   const salesByCampaign = {}
   const salesBySource = {}
+  const salesByProduct = {}
   let vendasSemUtm = 0
 
   filteredSales.forEach(sale => {
@@ -125,6 +136,14 @@ export function buildAttribution(metaCampaigns, dateOpts = {}, platform = 'todas
     }
     salesBySource[source].vendas++
     salesBySource[source].receita += sale.valor
+
+    // Agrupar por produto
+    const produto = sale.produto || 'Sem nome'
+    if (!salesByProduct[produto]) {
+      salesByProduct[produto] = { vendas: 0, receita: 0 }
+    }
+    salesByProduct[produto].vendas++
+    salesByProduct[produto].receita += sale.valor
   })
 
   // Cruzar com campanhas do Meta
@@ -181,6 +200,9 @@ export function buildAttribution(metaCampaigns, dateOpts = {}, platform = 'todas
     salesBySource: Object.entries(salesBySource).map(([source, data]) => ({
       source, ...data,
     })).sort((a, b) => b.receita - a.receita),
+    salesByProduct: Object.entries(salesByProduct).map(([produto, data]) => ({
+      produto, ...data,
+    })).sort((a, b) => b.vendas - a.vendas),
     totalVendas,
     totalReceita,
     vendasIniciaShop,
