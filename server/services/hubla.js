@@ -1,86 +1,105 @@
-import { getCache, setCache } from '../utils/cache.js'
+// Hubla funciona via webhooks — armazenamos eventos em memória
+// Documentação: https://hubla.gitbook.io/docs/webhooks/eventos-v2
 
-const HUBLA_API = 'https://api.hub.la'
+const events = []
+const MAX_EVENTS = 2000
 
-async function hublaFetch(endpoint, params = {}) {
-  const token = process.env.HUBLA_API_TOKEN
-  if (!token) throw new Error('HUBLA_API_TOKEN não configurado')
-
-  const url = new URL(`${HUBLA_API}${endpoint}`)
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+export function addEvent(event) {
+  events.unshift({
+    ...event,
+    receivedAt: new Date().toISOString(),
   })
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.message || `Hubla API error: ${res.status}`)
+  if (events.length > MAX_EVENTS) {
+    events.length = MAX_EVENTS
   }
-  return res.json()
 }
 
-export async function getSales(page = 1, status = '4') {
-  const cacheKey = `hubla_sales_${page}_${status}`
-  const cached = getCache(cacheKey)
-  if (cached) return cached
-
-  // Status: 1=pendente, 2=recusado, 3=cancelado, 4=pago, 5=reembolsado, 6=chargeback
-  const data = await hublaFetch('/2.0/transactions', {
-    page: String(page),
-    status,
-  })
-
-  setCache(cacheKey, data)
-  return data
+export function getEvents(limit = 50) {
+  return events.slice(0, limit)
 }
 
-export async function getSalesSummary() {
-  const cacheKey = 'hubla_summary'
-  const cached = getCache(cacheKey)
-  if (cached) return cached
+export function validateToken(token) {
+  const expectedToken = process.env.HUBLA_API_TOKEN
+  if (!expectedToken) return true
+  return token === expectedToken
+}
 
-  // Buscar vendas aprovadas
-  const approved = await getSales(1, '4')
-  // Buscar reembolsos
-  const refunded = await getSales(1, '5')
+export function getSalesSummary() {
+  // Eventos de invoice/pagamento confirmado
+  const vendas = events.filter(e =>
+    e.type === 'invoice.payment_confirmed' ||
+    e.type === 'invoice.created' ||
+    e.type === 'subscription.activated' ||
+    (e.event?.invoice?.status === 'paid')
+  )
 
-  const transactions = approved.data || approved.items || approved || []
-  const refunds = refunded.data || refunded.items || refunded || []
+  const reembolsos = events.filter(e =>
+    e.type === 'invoice.refunded' ||
+    e.type === 'refund_request.accepted'
+  )
 
-  const transactionList = Array.isArray(transactions) ? transactions : []
-  const refundList = Array.isArray(refunds) ? refunds : []
-
-  const totalReceita = transactionList.reduce((sum, t) => {
-    const valor = t.amount || t.value || t.price || 0
-    return sum + (typeof valor === 'number' ? valor : parseFloat(valor) || 0)
+  const totalReceita = vendas.reduce((sum, e) => {
+    const valor = extractValue(e)
+    return sum + valor
   }, 0)
 
-  const totalReembolsos = refundList.reduce((sum, t) => {
-    const valor = t.amount || t.value || t.price || 0
-    return sum + (typeof valor === 'number' ? valor : parseFloat(valor) || 0)
+  const totalReembolsos = reembolsos.reduce((sum, e) => {
+    const valor = extractValue(e)
+    return sum + valor
   }, 0)
 
-  const summary = {
-    totalVendas: transactionList.length,
-    totalReembolsos: refundList.length,
-    receita: totalReceita / 100, // Hubla geralmente retorna em centavos
-    reembolsos: totalReembolsos / 100,
-    receitaLiquida: (totalReceita - totalReembolsos) / 100,
-    transacoes: transactionList.slice(0, 20).map(t => ({
-      id: t.id || t.transaction_id,
-      produto: t.product?.name || t.productName || t.product_name || 'Produto',
-      valor: (t.amount || t.value || t.price || 0) / 100,
-      status: t.status,
-      data: t.created_at || t.createdAt || t.date,
-      comprador: t.buyer?.name || t.buyerName || t.buyer_name || '',
-      email: t.buyer?.email || t.buyerEmail || t.buyer_email || '',
+  return {
+    totalVendas: vendas.length,
+    totalReembolsos: reembolsos.length,
+    receita: totalReceita,
+    reembolsos: totalReembolsos,
+    receitaLiquida: totalReceita - totalReembolsos,
+    totalEventos: events.length,
+    transacoes: vendas.slice(0, 20).map(e => ({
+      id: e.event?.invoice?.id || e.event?.subscription?.id || e.receivedAt,
+      produto: e.event?.invoice?.product?.name ||
+               e.event?.subscription?.product?.name ||
+               e.event?.products?.[0]?.name ||
+               'Produto Hubla',
+      valor: extractValue(e),
+      status: 'pago',
+      data: e.event?.invoice?.paidAt ||
+            e.event?.invoice?.createdAt ||
+            e.event?.subscription?.activatedAt ||
+            e.receivedAt,
+      comprador: e.event?.invoice?.buyer?.name ||
+                 e.event?.subscription?.subscriber?.name ||
+                 e.event?.lead?.fullName ||
+                 '',
+      email: e.event?.invoice?.buyer?.email ||
+             e.event?.subscription?.subscriber?.email ||
+             e.event?.lead?.email ||
+             '',
     })),
   }
+}
 
-  setCache(cacheKey, summary)
-  return summary
+function extractValue(event) {
+  // Tentar diferentes caminhos onde o valor pode estar
+  const paths = [
+    event.event?.invoice?.amount,
+    event.event?.invoice?.value,
+    event.event?.invoice?.price,
+    event.event?.subscription?.price,
+    event.event?.smartInstallment?.amount,
+    event.amount,
+    event.value,
+    event.price,
+  ]
+
+  for (const v of paths) {
+    if (v != null) {
+      const num = typeof v === 'number' ? v : parseFloat(v)
+      if (!isNaN(num) && num > 0) {
+        // Se valor > 1000, provavelmente está em centavos
+        return num > 1000 ? num / 100 : num
+      }
+    }
+  }
+  return 0
 }
