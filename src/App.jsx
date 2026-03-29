@@ -17,7 +17,8 @@ import useDashboardData from './hooks/useDashboardData'
 
 export default function App() {
   const [period, setPeriod] = useState({ preset: 'last_30d' })
-  const { data, loading, error, sources, refetch } = useDashboardData(period)
+  const [platform, setPlatform] = useState('todas')
+  const { data, loading, error, sources, refetch } = useDashboardData(period, platform)
 
   if (loading && !data) return <LoadingSkeleton />
 
@@ -29,6 +30,8 @@ export default function App() {
       <Header
         period={period}
         onPeriodChange={setPeriod}
+        platform={platform}
+        onPlatformChange={setPlatform}
         onRefresh={refetch}
         sources={sources}
         loading={loading}

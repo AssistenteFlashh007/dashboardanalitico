@@ -87,15 +87,21 @@ export function extractUtmFromPagtrust(event) {
   }
 }
 
-// Cruzar vendas com campanhas do Meta Ads — com filtro de data
-export function buildAttribution(metaCampaigns, dateOpts = {}) {
+// Filtrar vendas por plataforma
+function filterByPlatform(sales, platform) {
+  if (!platform || platform === 'todas') return sales
+  return sales.filter(s => s.plataforma?.toLowerCase() === platform.toLowerCase())
+}
+
+// Cruzar vendas com campanhas do Meta Ads — com filtro de data e plataforma
+export function buildAttribution(metaCampaigns, dateOpts = {}, platform = 'todas') {
   const { since, until } = resolveDates(dateOpts)
-  const cacheKey = `attr_${since}_${until}_${salesWithUtm.length}`
+  const cacheKey = `attr_${since}_${until}_${platform}_${salesWithUtm.length}`
   const cached = getCache(cacheKey)
   if (cached) return cached
 
-  // Filtrar vendas pelo período
-  const filteredSales = filterByDate(salesWithUtm, since, until)
+  // Filtrar vendas pelo período e plataforma
+  const filteredSales = filterByPlatform(filterByDate(salesWithUtm, since, until), platform)
 
   const salesByCampaign = {}
   const salesBySource = {}

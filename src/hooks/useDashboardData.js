@@ -18,33 +18,37 @@ function isIniciaShop(productName) {
   return INICIASHOP_NAMES.some(n => productName.toLowerCase().includes(n))
 }
 
-export default function useDashboardData(period = { preset: 'last_30d' }) {
+export default function useDashboardData(period = { preset: 'last_30d' }, platform = 'todas') {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [sources, setSources] = useState({ meta: false, hubla: false, pagtrust: false })
 
-  // Normalizar period para objeto
-  const periodObj = typeof period === 'string' ? { preset: period } : period
+  // Extrair valores estáveis do period
+  const preset = typeof period === 'string' ? period : period?.preset || 'last_30d'
+  const since = typeof period === 'object' ? period?.since : undefined
+  const until = typeof period === 'object' ? period?.until : undefined
 
   const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
 
+    const periodObj = since && until ? { preset, since, until } : { preset }
+
     try {
-      const health = await checkHealth()
+      const [health, metaInsights, metaCampaigns, metaDaily, hublaSummary, pagtrustSales, attribution] =
+        await Promise.all([
+          checkHealth(),
+          fetchMetaInsights(periodObj),
+          fetchMetaCampaigns(periodObj),
+          fetchMetaDaily(periodObj),
+          fetchHublaSummary(),
+          fetchPagtrustSales(),
+          fetchAttribution(periodObj, platform),
+        ])
+
       const configured = health?.configured || {}
       setSources(configured)
-
-      const [metaInsights, metaCampaigns, metaDaily, hublaSummary, pagtrustSales, attribution] =
-        await Promise.all([
-          configured.meta ? fetchMetaInsights(periodObj) : null,
-          configured.meta ? fetchMetaCampaigns(periodObj) : null,
-          configured.meta ? fetchMetaDaily(periodObj) : null,
-          configured.hubla ? fetchHublaSummary() : null,
-          configured.pagtrust ? fetchPagtrustSales() : null,
-          configured.meta ? fetchAttribution(periodObj) : null,
-        ])
 
       const campaigns = metaCampaigns || mockData.campaignPerformance
       const salesData = buildSalesData(hublaSummary, pagtrustSales)
@@ -88,7 +92,7 @@ export default function useDashboardData(period = { preset: 'last_30d' }) {
     } finally {
       setLoading(false)
     }
-  }, [periodObj.preset, periodObj.since, periodObj.until])
+  }, [preset, since, until, platform])
 
   useEffect(() => {
     loadData()
@@ -130,7 +134,7 @@ function buildKpis(meta, hubla, pagtrust, attribution) {
     lucro: { valor: lucro, variacao: 0 },
     ticketMedio: { valor: ticketMedio, variacao: 0 },
     // Extras para outros componentes
-    vendasTotal: totalVendasReal,
+    vendasTotal: totalVendas,
     receitaTotal: faturamento,
   }
 }

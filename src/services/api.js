@@ -54,6 +54,7 @@ export async function fetchPagtrustSales() {
 }
 
 // Atribuição UTM
-export async function fetchAttribution(opts) {
-  return apiFetch(`/attribution?${buildDateQuery(opts)}`)
+export async function fetchAttribution(opts, platform = 'todas') {
+  const platformParam = platform !== 'todas' ? `&platform=${platform}` : ''
+  return apiFetch(`/attribution?${buildDateQuery(opts)}${platformParam}`)
 }

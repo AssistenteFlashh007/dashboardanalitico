@@ -9,7 +9,13 @@ const presets = [
   { value: 'last_90d', label: 'Total' },
 ]
 
-export default function Header({ period, onPeriodChange, onRefresh, sources, loading }) {
+const platforms = [
+  { value: 'todas', label: 'Todas' },
+  { value: 'hubla', label: 'Hubla' },
+  { value: 'pagtrust', label: 'Pagtrust' },
+]
+
+export default function Header({ period, onPeriodChange, platform, onPlatformChange, onRefresh, sources, loading }) {
   const [showCustom, setShowCustom] = useState(false)
   const [since, setSince] = useState('')
   const [until, setUntil] = useState('')
@@ -41,7 +47,24 @@ export default function Header({ period, onPeriodChange, onRefresh, sources, loa
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Filtros de período */}
+          {/* Filtro de plataforma */}
+          <div className="flex bg-dark rounded-lg border border-dark-border p-0.5">
+            {platforms.map(p => (
+              <button
+                key={p.value}
+                onClick={() => onPlatformChange(p.value)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  platform === p.value
+                    ? 'bg-accent text-white'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filtro de período */}
           <div className="flex bg-dark rounded-lg border border-dark-border p-0.5">
             {presets.map(p => (
               <button
