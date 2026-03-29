@@ -125,17 +125,20 @@ function resolveDates(opts) {
 }
 
 export function extractUtmFromHubla(event) {
-  const session = event.event?.lead?.session
-  const utm = session?.utm || {}
+  // UTM pode estar em invoice.paymentSession ou lead.session
+  const paymentSession = event.event?.invoice?.paymentSession
+  const leadSession = event.event?.lead?.session
+  const utm = paymentSession?.utm || leadSession?.utm || {}
+  const cookies = paymentSession?.cookies || leadSession?.cookies || {}
   return {
     utm_source: utm.source || null,
     utm_medium: utm.medium || null,
     utm_campaign: utm.campaign || null,
-    utm_content: utm.content || null,
+    utm_content: utm.content ? utm.content.split('::')[0] : null,
     utm_term: utm.term || null,
-    fbclid: session?.cookies?.fbc || null,
-    fbp: session?.cookies?.fbp || null,
-    gclid: session?.cookies?.gclid || null,
+    fbclid: cookies.fbclid || cookies.fbc || null,
+    fbp: cookies.fbp || null,
+    gclid: cookies.gclid || null,
   }
 }
 

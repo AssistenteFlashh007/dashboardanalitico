@@ -24,22 +24,36 @@ router.post('/webhook', (req, res) => {
                  event.type === 'invoice.payment_confirmed'
   if (isSale) {
     const utm = extractUtmFromHubla(event)
-    // Extrair valor — pode ser número (centavos) ou objeto {totalCents}
+
+    // Valor: invoice.amount é objeto {totalCents, subtotalCents, ...}
     const rawAmount = event.event?.invoice?.amount
     let valor = 0
-    if (typeof rawAmount === 'number') {
-      valor = rawAmount > 1000 ? rawAmount / 100 : rawAmount
-    } else if (rawAmount && typeof rawAmount === 'object') {
+    if (rawAmount && typeof rawAmount === 'object') {
       valor = (rawAmount.totalCents || rawAmount.subtotalCents || 0) / 100
+    } else if (typeof rawAmount === 'number') {
+      valor = rawAmount > 1000 ? rawAmount / 100 : rawAmount
     }
+
+    // Produto: está em event.event.product.name ou event.event.products[0].name
+    const produto = event.event?.product?.name ||
+                    event.event?.products?.[0]?.name ||
+                    event.event?.invoice?.product?.name ||
+                    'Produto Hubla'
+
+    // Comprador: está em invoice.payer ou event.user
+    const payer = event.event?.invoice?.payer || event.event?.user || {}
+    const comprador = [payer.firstName, payer.lastName].filter(Boolean).join(' ') ||
+                      payer.name || ''
+    const email = payer.email || ''
 
     addSaleWithUtm({
       id: event.event?.invoice?.id || Date.now(),
       plataforma: 'Hubla',
-      produto: event.event?.invoice?.product?.name || event.event?.invoice?.offer?.name || 'Produto Hubla',
+      produto,
       valor,
-      data: event.event?.invoice?.paidAt || new Date().toISOString(),
-      comprador: event.event?.invoice?.buyer?.name || event.event?.invoice?.customer?.name || '',
+      data: event.event?.invoice?.saleDate || event.event?.invoice?.statusAt || new Date().toISOString(),
+      comprador,
+      email,
       utm,
     })
   }
