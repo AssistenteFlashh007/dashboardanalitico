@@ -95,8 +95,8 @@ export default function App() {
           <SourcesChart data={data.trafficSources} />
         </div>
 
-        {/* Tabela de Campanhas */}
-        <CampaignTable data={data.campaigns} />
+        {/* Tabela de Campanhas — com vendas reais via UTM */}
+        <CampaignTable data={data.campaigns} attribution={data.attribution} />
 
         {/* Importar CSV + Atribuição UTM */}
         <CsvUpload onImported={refetch} />

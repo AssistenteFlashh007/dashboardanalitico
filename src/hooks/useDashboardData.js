@@ -98,28 +98,15 @@ export default function useDashboardData(period = { preset: 'last_30d' }) {
 }
 
 function buildKpis(meta, hubla, pagtrust, attribution) {
-  // Faturamento = receita total de vendas (Hubla + Pagtrust + CSV importado)
-  const receitaHubla = hubla?.receita || 0
-  const receitaPagtrust = pagtrust?.receita || 0
-  const receitaAtribuicao = attribution?.totalReceita || 0
-  // Usar o maior valor entre vendas diretas e atribuição (evitar duplicação)
-  const faturamento = Math.max(receitaHubla + receitaPagtrust, receitaAtribuicao)
-
-  // Investimento = gasto total no Meta Ads (já em BRL)
+  // Usar dados de atribuição (já filtrados por data) como fonte primária
+  const faturamento = attribution?.totalReceita || 0
+  const totalVendas = attribution?.totalVendas || 0
   const investimento = meta?.spend || 0
 
-  // Contar vendas IniciaShop para CPA
-  const allSales = [
-    ...(hubla?.transacoes || []),
-    ...(pagtrust?.ultimasVendas || []),
-  ]
-  const vendasIniciaShop = allSales.filter(s => isIniciaShop(s.produto)).length
-  // Se não tem vendas filtradas do webhook, tentar da atribuição
-  const totalVendasIniciaShop = vendasIniciaShop > 0 ? vendasIniciaShop : (meta?.conversions || 0)
-
-  // CPA IniciaShop = investimento / vendas IniciaShop
-  const cpaIniciaShop = totalVendasIniciaShop > 0
-    ? Math.round((investimento / totalVendasIniciaShop) * 100) / 100
+  // CPA IniciaShop — vendas do IniciaShop já filtradas pela atribuição
+  const vendasIniciaShop = attribution?.vendasIniciaShop || 0
+  const cpaIniciaShop = vendasIniciaShop > 0
+    ? Math.round((investimento / vendasIniciaShop) * 100) / 100
     : 0
 
   // ROAS real = faturamento / investimento
@@ -130,11 +117,9 @@ function buildKpis(meta, hubla, pagtrust, attribution) {
   // Lucro = faturamento - investimento
   const lucro = faturamento - investimento
 
-  // Ticket médio = faturamento / total vendas
-  const totalVendas = (hubla?.totalVendas || 0) + (pagtrust?.totalVendas || 0)
-  const totalVendasReal = totalVendas > 0 ? totalVendas : (attribution?.totalVendas || 0)
-  const ticketMedio = totalVendasReal > 0
-    ? Math.round((faturamento / totalVendasReal) * 100) / 100
+  // Ticket médio
+  const ticketMedio = totalVendas > 0
+    ? Math.round((faturamento / totalVendas) * 100) / 100
     : 0
 
   return {

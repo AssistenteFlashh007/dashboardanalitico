@@ -1,6 +1,5 @@
 import { getCache, setCache } from '../utils/cache.js'
 
-// Armazena todas as vendas com UTM para cruzamento
 const salesWithUtm = []
 const MAX_SALES = 100000
 
@@ -15,7 +14,50 @@ export function getAllSalesWithUtm() {
   return salesWithUtm
 }
 
-// Extrair UTMs de um evento da Hubla
+// Filtrar vendas por período
+function filterByDate(sales, since, until) {
+  if (!since && !until) return sales
+  const start = since ? new Date(since + 'T00:00:00') : new Date(0)
+  const end = until ? new Date(until + 'T23:59:59') : new Date()
+  return sales.filter(s => {
+    const d = new Date(s.data)
+    return d >= start && d <= end
+  })
+}
+
+// Resolver datas de presets do Meta para since/until
+function resolveDates(opts) {
+  const { period, since, until } = typeof opts === 'string' ? { period: opts } : opts
+  if (since && until) return { since, until }
+
+  const now = new Date()
+  const fmt = d => d.toISOString().split('T')[0]
+
+  switch (period) {
+    case 'today':
+      return { since: fmt(now), until: fmt(now) }
+    case 'yesterday': {
+      const y = new Date(now); y.setDate(y.getDate() - 1)
+      return { since: fmt(y), until: fmt(y) }
+    }
+    case 'this_month': {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { since: fmt(first), until: fmt(now) }
+    }
+    case 'last_7d': {
+      const d = new Date(now); d.setDate(d.getDate() - 7)
+      return { since: fmt(d), until: fmt(now) }
+    }
+    case 'last_30d': {
+      const d = new Date(now); d.setDate(d.getDate() - 30)
+      return { since: fmt(d), until: fmt(now) }
+    }
+    case 'last_90d':
+    default:
+      return { since: null, until: null } // sem filtro = tudo
+  }
+}
+
 export function extractUtmFromHubla(event) {
   const session = event.event?.lead?.session
   const utm = session?.utm || {}
@@ -25,14 +67,12 @@ export function extractUtmFromHubla(event) {
     utm_campaign: utm.campaign || null,
     utm_content: utm.content || null,
     utm_term: utm.term || null,
-    // Hubla também envia cookies de rastreamento
     fbclid: session?.cookies?.fbc || null,
     fbp: session?.cookies?.fbp || null,
     gclid: session?.cookies?.gclid || null,
   }
 }
 
-// Extrair UTMs de um evento da Pagtrust
 export function extractUtmFromPagtrust(event) {
   const origin = event.origin || event.tracking || {}
   return {
@@ -47,32 +87,32 @@ export function extractUtmFromPagtrust(event) {
   }
 }
 
-// Cruzar vendas com campanhas do Meta Ads
-export function buildAttribution(metaCampaigns) {
-  const cacheKey = 'attribution_data'
+// Cruzar vendas com campanhas do Meta Ads — com filtro de data
+export function buildAttribution(metaCampaigns, dateOpts = {}) {
+  const { since, until } = resolveDates(dateOpts)
+  const cacheKey = `attr_${since}_${until}_${salesWithUtm.length}`
   const cached = getCache(cacheKey)
-  if (cached && cached._salesCount === salesWithUtm.length) return cached
+  if (cached) return cached
 
-  // Agrupar vendas por utm_campaign
+  // Filtrar vendas pelo período
+  const filteredSales = filterByDate(salesWithUtm, since, until)
+
   const salesByCampaign = {}
   const salesBySource = {}
-  const salesWithoutUtm = []
+  let vendasSemUtm = 0
 
-  salesWithUtm.forEach(sale => {
-    // Por campanha
+  filteredSales.forEach(sale => {
     const campaign = sale.utm?.utm_campaign
     if (campaign) {
       if (!salesByCampaign[campaign]) {
-        salesByCampaign[campaign] = { vendas: 0, receita: 0, sales: [] }
+        salesByCampaign[campaign] = { vendas: 0, receita: 0 }
       }
       salesByCampaign[campaign].vendas++
       salesByCampaign[campaign].receita += sale.valor
-      salesByCampaign[campaign].sales.push(sale)
     } else {
-      salesWithoutUtm.push(sale)
+      vendasSemUtm++
     }
 
-    // Por source
     const source = sale.utm?.utm_source || 'direto'
     if (!salesBySource[source]) {
       salesBySource[source] = { vendas: 0, receita: 0 }
@@ -81,13 +121,12 @@ export function buildAttribution(metaCampaigns) {
     salesBySource[source].receita += sale.valor
   })
 
-  // Cruzar com campanhas do Meta se disponível
+  // Cruzar com campanhas do Meta
   const campaignAttribution = []
 
   if (metaCampaigns && metaCampaigns.length > 0) {
     metaCampaigns.forEach(mc => {
       const campaignName = mc.nome?.toLowerCase().trim()
-      // Tentar match por nome da campanha
       const matchKey = Object.keys(salesByCampaign).find(key =>
         key.toLowerCase().trim() === campaignName ||
         campaignName.includes(key.toLowerCase().trim()) ||
@@ -101,51 +140,49 @@ export function buildAttribution(metaCampaigns) {
         conta: mc.conta,
         investido: mc.investido,
         cliques: mc.cliques,
+        impressoes: mc.impressoes,
+        ctr: mc.ctr,
         conversoesMeta: mc.conversoes,
-        // Dados reais de vendas
         vendasReais: salesData?.vendas || 0,
         receitaReal: salesData?.receita || 0,
-        // ROAS real = receita de vendas / investido
         roasReal: salesData && mc.investido > 0
           ? Math.round((salesData.receita / mc.investido) * 100) / 100
           : null,
-        // CPA real = investido / vendas reais
         cpaReal: salesData && salesData.vendas > 0
           ? Math.round((mc.investido / salesData.vendas) * 100) / 100
           : null,
-        // ROAS do Meta (pixel)
         roasMeta: mc.roas,
+        cpaMeta: mc.cpa,
       })
     })
   }
 
-  // Ordenar por receita real (maiores primeiro)
   campaignAttribution.sort((a, b) => (b.receitaReal || 0) - (a.receitaReal || 0))
 
-  // Totais
-  const totalVendas = salesWithUtm.length
-  const totalReceita = salesWithUtm.reduce((sum, s) => sum + s.valor, 0)
-  const vendasFacebook = Object.entries(salesBySource)
-    .filter(([source]) => ['facebook', 'fb', 'ig', 'instagram', 'meta'].includes(source.toLowerCase()))
-    .reduce((sum, [, data]) => sum + data.vendas, 0)
-  const receitaFacebook = Object.entries(salesBySource)
-    .filter(([source]) => ['facebook', 'fb', 'ig', 'instagram', 'meta'].includes(source.toLowerCase()))
-    .reduce((sum, [, data]) => sum + data.receita, 0)
+  const totalVendas = filteredSales.length
+  const totalReceita = filteredSales.reduce((sum, s) => sum + s.valor, 0)
+
+  // Contar vendas IniciaShop
+  const vendasIniciaShop = filteredSales.filter(s =>
+    s.produto?.toLowerCase().includes('iniciashop')
+  ).length
+  const receitaIniciaShop = filteredSales
+    .filter(s => s.produto?.toLowerCase().includes('iniciashop'))
+    .reduce((sum, s) => sum + s.valor, 0)
 
   const result = {
     campaignAttribution,
     salesBySource: Object.entries(salesBySource).map(([source, data]) => ({
-      source,
-      ...data,
+      source, ...data,
     })).sort((a, b) => b.receita - a.receita),
     totalVendas,
     totalReceita,
-    vendasFacebook,
-    receitaFacebook,
-    vendasSemUtm: salesWithoutUtm.length,
-    _salesCount: salesWithUtm.length,
+    vendasIniciaShop,
+    receitaIniciaShop,
+    vendasSemUtm,
+    periodo: { since, until },
   }
 
-  setCache(cacheKey, result, 60 * 1000) // Cache de 1 minuto
+  setCache(cacheKey, result, 30 * 1000)
   return result
 }
