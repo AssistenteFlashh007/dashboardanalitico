@@ -1,6 +1,8 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
 import metaRoutes from './routes/meta.js'
 import hublaRoutes from './routes/hubla.js'
 import pagtrustRoutes from './routes/pagtrust.js'
@@ -9,13 +11,14 @@ import importRoutes from './routes/import.js'
 
 dotenv.config()
 
+const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3001
 
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'] }))
+app.use(cors())
 app.use(express.json())
 
-// Rotas
+// Rotas API
 app.use('/api/meta', metaRoutes)
 app.use('/api/hubla', hublaRoutes)
 app.use('/api/pagtrust', pagtrustRoutes)
@@ -32,8 +35,16 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', configured })
 })
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server rodando em http://localhost:${PORT}`)
+// Em produção, servir o frontend buildado
+const distPath = join(__dirname, '..', 'dist')
+app.use(express.static(distPath))
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next()
+  res.sendFile(join(distPath, 'index.html'))
+})
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server rodando em http://0.0.0.0:${PORT}`)
   const accounts = process.env.META_AD_ACCOUNTS?.split(',').length || (process.env.META_AD_ACCOUNT_ID ? 1 : 0)
   console.log(`📊 Meta Ads: ${process.env.META_ACCESS_TOKEN ? `✅ ${accounts} conta(s)` : '❌ não configurado'}`)
   console.log(`🛒 Hubla: ${process.env.HUBLA_API_TOKEN ? '✅ configurado' : '❌ não configurado'}`)
