@@ -39,16 +39,31 @@ function parseValue(val) {
 }
 
 function parseDate(val) {
-  if (!val) return new Date().toISOString()
+  if (!val) return null
   const str = String(val).trim()
-  // DD/MM/YYYY HH:MM:SS
-  const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(.*)$/)
+
+  // DD/MM/YYYY HH:MM:SS (formato Hubla)
+  const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2}:\d{2})/)
   if (brMatch) {
-    const [, day, month, year, rest] = brMatch
-    return new Date(`${year}-${month}-${day}${rest || 'T00:00:00'}`).toISOString()
+    const [, day, month, year, time] = brMatch
+    return `${year}-${month}-${day}T${time}.000Z`
   }
+
+  // DD/MM/YYYY (sem hora)
+  const brDateOnly = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (brDateOnly) {
+    const [, day, month, year] = brDateOnly
+    return `${year}-${month}-${day}T00:00:00.000Z`
+  }
+
+  // ISO 8601 (formato Pagtrust: 2026-03-29T02:25:06.408Z)
+  if (str.includes('T') && str.match(/^\d{4}-\d{2}-\d{2}T/)) {
+    return str
+  }
+
+  // Tentar parse nativo
   const d = new Date(str)
-  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+  return isNaN(d.getTime()) ? null : d.toISOString()
 }
 
 function processRecords(records, platform) {
@@ -87,6 +102,12 @@ function processRecords(records, platform) {
         continue
       }
 
+      const dataVenda = parseDate(row[colMap.data])
+      if (!dataVenda) {
+        skipped++
+        continue
+      }
+
       // Extrair UTM campaign — limpar pipes e IDs do Meta
       let utmCampaign = row[colMap.utm_campaign] || null
       if (utmCampaign) {
@@ -114,7 +135,7 @@ function processRecords(records, platform) {
         plataforma: platform,
         produto,
         valor,
-        data: parseDate(row[colMap.data]),
+        data: dataVenda,
         comprador: row[colMap.comprador] || '',
         email: row[colMap.email] || '',
         utm,
