@@ -11,6 +11,7 @@ import importRoutes from './routes/import.js'
 import analyticsRoutes from './routes/analytics.js'
 import abtestsRoutes from './routes/abtests.js'
 import webinarioRoutes from './routes/webinario.js'
+import hotwebinarRoutes from './routes/hotwebinar.js'
 
 dotenv.config()
 
@@ -30,6 +31,7 @@ app.use('/api/import', importRoutes)
 app.use('/api/analytics', analyticsRoutes)
 app.use('/api/abtests', abtestsRoutes)
 app.use('/api/webinario', webinarioRoutes)
+app.use('/api/hotwebinar', hotwebinarRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => {

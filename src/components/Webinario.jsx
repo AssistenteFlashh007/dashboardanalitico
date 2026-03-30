@@ -124,6 +124,7 @@ export default function Webinario() {
   const [loading, setLoading] = useState(true)
   const [webinarName, setWebinarName] = useState('Lancamento Atual')
   const [editingName, setEditingName] = useState(false)
+  const [hotwebinarConnected, setHotwebinarConnected] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -132,14 +133,53 @@ export default function Webinario() {
   async function loadData() {
     setLoading(true)
     try {
+      // Carregar dados salvos manualmente
       const res = await fetch(`${API_BASE}/webinario`)
+      let manualData = defaultData()
+      let name = 'Lancamento Atual'
       if (res.ok) {
         const json = await res.json()
         if (json.data) {
-          setData(json.data.metrics || defaultData())
-          setWebinarName(json.data.name || 'Lancamento Atual')
+          manualData = json.data.metrics || defaultData()
+          name = json.data.name || 'Lancamento Atual'
         }
       }
+
+      // Carregar dados do HotWebinar automaticamente
+      try {
+        const hwRes = await fetch(`${API_BASE}/hotwebinar/stats?type=ambos`)
+        if (hwRes.ok) {
+          const hwJson = await hwRes.json()
+          if (hwJson.success && hwJson.data) {
+            const hw = hwJson.data
+            // Mesclar dados do HotWebinar com dados manuais (HotWebinar tem prioridade)
+            if (hw.alunos) {
+              manualData.alunos = {
+                ...manualData.alunos,
+                adquiridos: hw.alunos.visitantes || manualData.alunos.adquiridos,
+                iniciaram: hw.alunos.acessaram || manualData.alunos.iniciaram,
+                pico: hw.alunos.peakAudience || manualData.alunos.pico,
+                pitch: hw.alunos.pitch || manualData.alunos.pitch,
+                clicaram: hw.alunos.clicouOferta || manualData.alunos.clicaram,
+              }
+            }
+            if (hw.naoAlunos) {
+              manualData.naoAlunos = {
+                ...manualData.naoAlunos,
+                adquiridos: hw.naoAlunos.visitantes || manualData.naoAlunos.adquiridos,
+                iniciaram: hw.naoAlunos.acessaram || manualData.naoAlunos.iniciaram,
+                pico: hw.naoAlunos.peakAudience || manualData.naoAlunos.pico,
+                pitch: hw.naoAlunos.pitch || manualData.naoAlunos.pitch,
+                clicaram: hw.naoAlunos.clicouOferta || manualData.naoAlunos.clicaram,
+              }
+            }
+            setHotwebinarConnected(true)
+          }
+        }
+      } catch { }
+
+      setData(manualData)
+      setWebinarName(name)
     } catch { }
     setLoading(false)
   }
@@ -302,7 +342,7 @@ export default function Webinario() {
             { name: 'ManyChat', desc: 'Mensagens + Grupo (Alunos)', status: 'pendente' },
             { name: 'SendFlow', desc: 'Grupo WhatsApp', status: 'pendente' },
             { name: 'InLead', desc: 'Leads Nao Alunos', status: 'pendente' },
-            { name: 'HotWebnar', desc: 'Participantes + Pico ao Vivo', status: 'pendente' },
+            { name: 'HotWebnar', desc: 'Participantes + Pico ao Vivo', status: hotwebinarConnected ? 'conectado' : 'pendente' },
           ].map(src => (
             <div key={src.name} className="bg-dark/40 rounded-xl p-3 border border-dark-border/30">
               <div className="flex items-center justify-between mb-1">
