@@ -118,17 +118,29 @@ function FunnelColumn({ title, subtitle, data, editing, onChange, sourceLabel })
   )
 }
 
-export default function Webinario({ period }) {
+const datePresets = [
+  { value: 'today', label: 'Hoje' },
+  { value: 'yesterday', label: 'Ontem' },
+  { value: 'this_month', label: 'Este Mes' },
+  { value: 'last_7d', label: '7 dias' },
+  { value: 'last_90d', label: 'Total' },
+]
+
+export default function Webinario() {
   const [data, setData] = useState(defaultData())
   const [editing, setEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [webinarName, setWebinarName] = useState('Lancamento Atual')
   const [editingName, setEditingName] = useState(false)
   const [hotwebinarConnected, setHotwebinarConnected] = useState(false)
+  const [localPeriod, setLocalPeriod] = useState({ preset: 'today' })
+  const [customSince, setCustomSince] = useState('')
+  const [customUntil, setCustomUntil] = useState('')
+  const [showCustom, setShowCustom] = useState(false)
 
   useEffect(() => {
     loadData()
-  }, [period?.preset, period?.since, period?.until])
+  }, [localPeriod?.preset, localPeriod?.since, localPeriod?.until])
 
   async function loadData() {
     setLoading(true)
@@ -147,9 +159,9 @@ export default function Webinario({ period }) {
 
       // Carregar dados do HotWebinar automaticamente
       try {
-        const dateParam = period?.since && period?.until
-          ? `&since=${period.since}&until=${period.until}`
-          : period?.preset ? `&period=${period.preset}` : '&period=today'
+        const dateParam = localPeriod?.since && localPeriod?.until
+          ? `&since=${localPeriod.since}&until=${localPeriod.until}`
+          : localPeriod?.preset ? `&period=${localPeriod.preset}` : '&period=today'
         const hwRes = await fetch(`${API_BASE}/hotwebinar/stats?type=ambos${dateParam}`)
         if (hwRes.ok) {
           const hwJson = await hwRes.json()
@@ -253,6 +265,50 @@ export default function Webinario({ period }) {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Filtro de Datas */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex bg-dark/60 rounded-xl border border-dark-border/40 p-0.5">
+          {datePresets.map(p => (
+            <button
+              key={p.value}
+              onClick={() => { setLocalPeriod({ preset: p.value }); setShowCustom(false) }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                localPeriod.preset === p.value && !localPeriod.since
+                  ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-md shadow-purple-500/20'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+          <button
+            onClick={() => setShowCustom(!showCustom)}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+              localPeriod.since
+                ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-md shadow-purple-500/20'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            Personalizado
+          </button>
+        </div>
+        {showCustom && (
+          <div className="flex items-center gap-2">
+            <input type="date" value={customSince} onChange={e => setCustomSince(e.target.value)} className="bg-dark/60 border border-dark-border/40 rounded-lg px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-purple-500/50" />
+            <span className="text-xs text-text-secondary">ate</span>
+            <input type="date" value={customUntil} onChange={e => setCustomUntil(e.target.value)} className="bg-dark/60 border border-dark-border/40 rounded-lg px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-purple-500/50" />
+            <button
+              onClick={() => { if (customSince && customUntil) setLocalPeriod({ preset: 'custom', since: customSince, until: customUntil }) }}
+              disabled={!customSince || !customUntil}
+              className="px-3 py-1.5 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            >
+              Aplicar
+            </button>
+          </div>
+        )}
+        {loading && <span className="text-xs text-text-secondary animate-pulse">Carregando...</span>}
       </div>
 
       {/* Summary Cards */}

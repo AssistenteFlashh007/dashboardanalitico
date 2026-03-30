@@ -199,7 +199,7 @@ export default function App() {
         {/* Webinario */}
         {activeTab === 'webinario' && (
           <main className="p-6 overflow-y-auto">
-            <Webinario period={period} />
+            <Webinario />
           </main>
         )}
 
