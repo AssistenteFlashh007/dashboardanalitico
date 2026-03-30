@@ -1,28 +1,57 @@
 import { getCache, setCache } from './cache.js'
 
 const CACHE_KEY = 'usd_brl_rate'
-const CACHE_TTL = 30 * 60 * 1000 // 30 minutos
+const CACHE_TTL = 15 * 60 * 1000 // 15 minutos
 
 export async function getUsdToBrl() {
   const cached = getCache(CACHE_KEY)
   if (cached) return cached
 
-  try {
-    // API pública do Banco Central / AwesomeAPI
-    const res = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL')
-    if (!res.ok) throw new Error(`Currency API error: ${res.status}`)
-    const data = await res.json()
-    const rate = parseFloat(data.USDBRL?.bid || data.USDBRL?.ask || 5.70)
+  // Tentar multiplas APIs pra garantir cotacao real
+  const apis = [
+    {
+      name: 'AwesomeAPI',
+      url: 'https://economia.awesomeapi.com.br/json/last/USD-BRL',
+      parse: (data) => parseFloat(data.USDBRL?.bid || 0)
+    },
+    {
+      name: 'AwesomeAPI v2',
+      url: 'https://economia.awesomeapi.com.br/USD-BRL/1',
+      parse: (data) => parseFloat(data[0]?.bid || 0)
+    },
+    {
+      name: 'Open Exchange (BCB)',
+      url: 'https://api.exchangerate-api.com/v4/latest/USD',
+      parse: (data) => parseFloat(data.rates?.BRL || 0)
+    },
+  ]
 
-    console.log(`💱 Cotação USD/BRL atualizada: R$ ${rate.toFixed(2)}`)
-    setCache(CACHE_KEY, rate, CACHE_TTL)
-    return rate
-  } catch (error) {
-    console.warn(`[Currency] Erro ao buscar cotação: ${error.message}. Usando fallback R$ 5.70`)
-    const fallback = 5.70
-    setCache(CACHE_KEY, fallback, CACHE_TTL)
-    return fallback
+  for (const api of apis) {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 5000)
+      const res = await fetch(api.url, { signal: controller.signal })
+      clearTimeout(timeout)
+
+      if (!res.ok) continue
+      const data = await res.json()
+      const rate = api.parse(data)
+
+      if (rate > 3 && rate < 10) { // sanity check
+        console.log(`💱 Cotacao USD/BRL via ${api.name}: R$ ${rate.toFixed(4)}`)
+        setCache(CACHE_KEY, rate, CACHE_TTL)
+        return rate
+      }
+    } catch (err) {
+      console.warn(`[Currency] ${api.name} falhou: ${err.message}`)
+    }
   }
+
+  // Ultimo fallback -- mas avisa no log que e fallback
+  const fallback = 5.25
+  console.error(`[Currency] TODAS as APIs falharam! Usando fallback R$ ${fallback}`)
+  setCache(CACHE_KEY, fallback, 5 * 60 * 1000) // cache menor pra tentar de novo logo
+  return fallback
 }
 
 export function convertUsdToBrl(valueUsd, rate) {
