@@ -35,7 +35,7 @@ const bottomItems = [
 ]
 
 export default function App() {
-  const [period, setPeriod] = useState({ preset: 'this_month' })
+  const [period, setPeriod] = useState({ preset: 'today' })
   const [platform, setPlatform] = useState('todas')
   const [activeTab, setActiveTab] = useState('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -199,7 +199,7 @@ export default function App() {
         {/* Webinario */}
         {activeTab === 'webinario' && (
           <main className="p-6 overflow-y-auto">
-            <Webinario />
+            <Webinario period={period} />
           </main>
         )}
 

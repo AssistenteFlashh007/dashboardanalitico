@@ -29,18 +29,48 @@ router.get('/stats', async (req, res) => {
 
   const type = req.query.type || 'ambos'
 
+  // Resolver datas do filtro
+  let since = req.query.since
+  let until = req.query.until
+  const period = req.query.period || 'today'
+
+  if (!since || !until) {
+    const now = new Date()
+    const brDate = now.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+    if (period === 'today') {
+      since = brDate
+      until = brDate
+    } else if (period === 'yesterday') {
+      const y = new Date(now); y.setDate(y.getDate() - 1)
+      since = y.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+      until = since
+    } else if (period === 'this_month') {
+      since = brDate.substring(0, 8) + '01'
+      until = brDate
+    } else if (period === 'last_7d') {
+      const d = new Date(now); d.setDate(d.getDate() - 7)
+      since = d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+      until = brDate
+    } else {
+      // last_90d ou default: sem filtro de data
+      since = null
+      until = null
+    }
+  }
+
   try {
     const result = {}
+    const dateRange = since && until ? { since, until } : null
 
     if (type === 'alunos' || type === 'ambos') {
       if (config.webinarAlunos) {
-        result.alunos = await fetchWebinarStats(config.webinarAlunos, config.token)
+        result.alunos = await fetchWebinarStats(config.webinarAlunos, config.token, dateRange)
       }
     }
 
     if (type === 'naoAlunos' || type === 'ambos') {
       if (config.webinarNaoAlunos) {
-        result.naoAlunos = await fetchWebinarStats(config.webinarNaoAlunos, config.token)
+        result.naoAlunos = await fetchWebinarStats(config.webinarNaoAlunos, config.token, dateRange)
       }
     }
 

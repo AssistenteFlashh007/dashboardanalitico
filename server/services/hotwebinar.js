@@ -25,13 +25,17 @@ function getMetricCount(metrics, id) {
   return m?.count || 0
 }
 
-export async function fetchWebinarStats(webinarId, token) {
+export async function fetchWebinarStats(webinarId, token, dateRange) {
   if (!webinarId || !token) return null
 
   try {
-    const res = await fetch(`${API_BASE}/stats/${webinarId}`, {
+    let url = `${API_BASE}/stats/${webinarId}`
+    if (dateRange?.since && dateRange?.until) {
+      url += `?startDate=${dateRange.since}T00:00:00&endDate=${dateRange.until}T23:59:59`
+    }
+
+    const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` },
-      timeout: 10000,
     })
 
     if (!res.ok) {

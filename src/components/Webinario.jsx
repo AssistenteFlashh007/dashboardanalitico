@@ -118,7 +118,7 @@ function FunnelColumn({ title, subtitle, data, editing, onChange, sourceLabel })
   )
 }
 
-export default function Webinario() {
+export default function Webinario({ period }) {
   const [data, setData] = useState(defaultData())
   const [editing, setEditing] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -128,7 +128,7 @@ export default function Webinario() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [period?.preset, period?.since, period?.until])
 
   async function loadData() {
     setLoading(true)
@@ -147,7 +147,10 @@ export default function Webinario() {
 
       // Carregar dados do HotWebinar automaticamente
       try {
-        const hwRes = await fetch(`${API_BASE}/hotwebinar/stats?type=ambos`)
+        const dateParam = period?.since && period?.until
+          ? `&since=${period.since}&until=${period.until}`
+          : period?.preset ? `&period=${period.preset}` : '&period=today'
+        const hwRes = await fetch(`${API_BASE}/hotwebinar/stats?type=ambos${dateParam}`)
         if (hwRes.ok) {
           const hwJson = await hwRes.json()
           if (hwJson.success && hwJson.data) {
