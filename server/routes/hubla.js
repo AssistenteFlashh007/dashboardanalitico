@@ -23,6 +23,14 @@ router.post('/webhook', (req, res) => {
   const isSale = event.type === 'invoice.payment_succeeded' ||
                  event.type === 'invoice.payment_confirmed'
   if (isSale) {
+    // Deduplicacao por invoice ID
+    const invoiceId = event.event?.invoice?.id || ''
+    if (invoiceId && global._hubla_dedup?.[invoiceId]) {
+      console.log(`[Hubla Webhook] Venda duplicada ignorada: ${invoiceId}`)
+    } else {
+      if (!global._hubla_dedup) global._hubla_dedup = {}
+      if (invoiceId) global._hubla_dedup[invoiceId] = true
+
     const utm = extractUtmFromHubla(event)
 
     // Valor: invoice.amount é objeto {totalCents, subtotalCents, ...}
@@ -56,6 +64,7 @@ router.post('/webhook', (req, res) => {
       email,
       utm,
     })
+    } // fim dedup else
   }
 
   const eventType = event.type || 'desconhecido'

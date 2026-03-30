@@ -35,12 +35,20 @@ router.post('/webhook', (req, res) => {
   const purchaseStatus = String(purchaseData.status || event.status || d.status || '').toUpperCase()
   const eventType = String(event.event || event.type || '').toUpperCase()
 
-  const isSale = purchaseStatus === 'APPROVED' || purchaseStatus === 'APROVADO' ||
-                 eventType === 'PURCHASE_APPROVED' || eventType === 'APPROVED' ||
-                 purchaseStatus === 'PAID' || purchaseStatus === 'PAGO'
+  // SOMENTE PURCHASE_APPROVED conta como venda
+  const isSale = eventType === 'PURCHASE_APPROVED'
 
   if (isSale) {
     try {
+    // Deduplicacao: verificar se ja existe essa venda pelo ID + produto
+    const saleId = event.id || purchaseData.transaction || ''
+    const prodName = (d.product?.name || '')
+    const dedupKey = `${saleId}_${prodName}`
+    if (saleId && global._pagtrust_dedup?.[dedupKey]) {
+      console.log(`[Pagtrust Webhook] Venda duplicada ignorada: ${dedupKey}`)
+    } else {
+      if (!global._pagtrust_dedup) global._pagtrust_dedup = {}
+      if (saleId) global._pagtrust_dedup[dedupKey] = true
     const origin = purchaseData.origin || d.origin || {}
     const utm = {
       utm_source: origin.utmsource || origin.utm_source || origin.src || null,
@@ -82,6 +90,7 @@ router.post('/webhook', (req, res) => {
       oferta: offer.name || null,
       metodo_pagamento: purchaseData.payment?.type || null,
     })
+    } // fim dedup else
     } catch (err) {
       console.error(`[Pagtrust Webhook] ERRO ao salvar venda:`, err.message)
     }
