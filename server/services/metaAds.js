@@ -295,3 +295,89 @@ export async function getDailyInsights(opts = 'last_7d') {
   setCache(cacheKey, daily)
   return daily
 }
+
+// Buscar anuncios com dados de criativo (imagem, darkpost)
+export async function getAdCreatives(opts = 'this_month') {
+  const cacheKey = buildCacheKey('meta_ad_creatives', opts)
+  const cached = getCache(cacheKey)
+  if (cached) return cached
+
+  const accountIds = getAccountIds()
+  const rate = await getUsdToBrl()
+  const dateParams = buildDateParams(opts)
+  const token = process.env.META_ACCESS_TOKEN
+
+  const results = await Promise.allSettled(
+    accountIds.map(async (accountId) => {
+      const accountName = ACCOUNT_NAMES[accountId] || accountId
+
+      // Buscar anuncios com creative data
+      const adsData = await metaFetch(`/${accountId}/ads`, {
+        fields: 'name,status,creative{thumbnail_url,image_url,effective_object_story_id},campaign_name,adset_name',
+        limit: '200',
+        effective_status: '["ACTIVE","PAUSED"]',
+      })
+
+      const ads = adsData.data || []
+
+      // Buscar insights por anuncio (separado pra nao sobrecarregar)
+      let adInsights = {}
+      try {
+        const insightsData = await metaFetch(`/${accountId}/insights`, {
+          fields: 'ad_id,ad_name,spend,impressions,clicks,actions',
+          level: 'ad',
+          limit: '200',
+          ...dateParams,
+        })
+        for (const row of (insightsData.data || [])) {
+          adInsights[row.ad_id] = row
+        }
+      } catch (e) {
+        console.warn(`[MetaAds] Erro ao buscar insights por ad de ${accountName}:`, e.message)
+      }
+
+      return ads.map(ad => {
+        const creative = ad.creative || {}
+        const insights = adInsights[ad.id] || {}
+
+        // Darkpost URL: effective_object_story_id = "pageId_postId"
+        let darkpostUrl = null
+        if (creative.effective_object_story_id) {
+          const parts = creative.effective_object_story_id.split('_')
+          if (parts.length >= 2) {
+            darkpostUrl = `https://www.facebook.com/${parts[0]}/posts/${parts.slice(1).join('_')}`
+          }
+        }
+
+        const spendUsd = parseFloat(insights.spend || 0)
+        const purchaseAction = insights.actions?.find(a => a.action_type === 'purchase')
+
+        return {
+          adId: ad.id,
+          adName: ad.name || '',
+          accountId,
+          accountName,
+          campaignName: ad.campaign_name || '',
+          adsetName: ad.adset_name || '',
+          status: ad.status,
+          thumbnailUrl: creative.thumbnail_url || null,
+          imageUrl: creative.image_url || null,
+          darkpostUrl,
+          previewUrl: `https://www.facebook.com/ads/archive/render_ad/?id=${ad.id}&access_token=${token}`,
+          metaSpend: convertUsdToBrl(spendUsd, rate),
+          metaClicks: parseInt(insights.clicks || 0),
+          metaImpressions: parseInt(insights.impressions || 0),
+          metaConversions: purchaseAction ? parseInt(purchaseAction.value || 0) : 0,
+        }
+      })
+    })
+  )
+
+  const allAds = results
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+
+  console.log(`[MetaAds] ${allAds.length} anuncios com criativos carregados`)
+  setCache(cacheKey, allAds)
+  return allAds
+}

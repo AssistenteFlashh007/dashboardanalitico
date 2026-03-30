@@ -1,5 +1,5 @@
 import { getAllSalesWithUtm } from './attribution.js'
-import { getCampaignInsights } from './metaAds.js'
+import { getCampaignInsights, getAdCreatives } from './metaAds.js'
 
 function toDateBR(date) {
   const d = new Date(date)
@@ -293,9 +293,30 @@ export async function getFunnelAnalytics(opts = {}) {
   }
 }
 
-export function getCreativeAnalytics(opts = {}) {
+function normalizeForMatch(str) {
+  return (str || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function findMatchingAd(creativeName, metaAds) {
+  const normalized = normalizeForMatch(creativeName)
+  if (!normalized || normalized === 'sem criativo') return null
+  // 1. Exact match
+  let match = metaAds.find(ad => normalizeForMatch(ad.adName) === normalized)
+  if (match) return match
+  // 2. Ad name contains utm_content
+  match = metaAds.find(ad => normalizeForMatch(ad.adName).includes(normalized))
+  if (match) return match
+  // 3. utm_content contains ad name
+  match = metaAds.find(ad => {
+    const adNorm = normalizeForMatch(ad.adName)
+    return adNorm.length > 5 && normalized.includes(adNorm)
+  })
+  return match || null
+}
+
+export async function getCreativeAnalytics(opts = {}) {
   const sales = filterSales(getAllSalesWithUtm(), opts)
-  if (sales.length === 0) return { criativos: [], contas: [] }
+  if (sales.length === 0) return { criativos: [], contas: [], totalVendas: 0, totalReceita: 0 }
 
   const criativoMap = {}
   sales.forEach(s => {
@@ -309,20 +330,51 @@ export function getCreativeAnalytics(opts = {}) {
   const totalVendas = sales.length
   const totalReceita = sales.reduce((s, v) => s + v.valor, 0)
 
+  // Buscar dados de criativos do Meta Ads
+  let metaAds = []
+  try {
+    metaAds = await getAdCreatives(opts.dateOpts || 'this_month') || []
+  } catch (err) {
+    console.warn('[Analytics] Erro ao buscar criativos do Meta:', err.message)
+  }
+
   const criativos = Object.entries(criativoMap)
-    .map(([nome, data]) => ({
-      nome, ...data,
-      ticketMedio: Math.round(data.receita / data.vendas * 100) / 100,
-      pctVendas: Math.round((data.vendas / totalVendas) * 10000) / 100,
-      pctReceita: Math.round((data.receita / totalReceita) * 10000) / 100,
-      taxaOB: Math.round((data.orderbumps / data.vendas) * 10000) / 100,
-    }))
+    .map(([nome, data]) => {
+      const matchedAd = findMatchingAd(nome, metaAds)
+      return {
+        nome, ...data,
+        ticketMedio: Math.round(data.receita / data.vendas * 100) / 100,
+        pctVendas: Math.round((data.vendas / totalVendas) * 10000) / 100,
+        pctReceita: Math.round((data.receita / totalReceita) * 10000) / 100,
+        taxaOB: Math.round((data.orderbumps / data.vendas) * 10000) / 100,
+        // Meta Ads data
+        linkedToMeta: !!matchedAd,
+        thumbnailUrl: matchedAd?.thumbnailUrl || null,
+        imageUrl: matchedAd?.imageUrl || null,
+        darkpostUrl: matchedAd?.darkpostUrl || null,
+        previewUrl: matchedAd?.previewUrl || null,
+        metaSpend: matchedAd?.metaSpend || 0,
+        metaClicks: matchedAd?.metaClicks || 0,
+        metaImpressions: matchedAd?.metaImpressions || 0,
+        adId: matchedAd?.adId || null,
+        campaignName: matchedAd?.campaignName || null,
+      }
+    })
     .sort((a, b) => b.vendas - a.vendas)
+
+  const matchedCount = criativos.filter(c => c.linkedToMeta).length
 
   const contaSet = new Set()
   getAllSalesWithUtm().forEach(s => { if (s.conta) contaSet.add(s.conta) })
 
-  return { criativos: criativos.slice(0, 30), totalVendas, totalReceita, contas: ['todas', ...Array.from(contaSet).sort()] }
+  return {
+    criativos: criativos.slice(0, 30),
+    totalVendas,
+    totalReceita,
+    matchedCount,
+    totalCreatives: criativos.length,
+    contas: ['todas', ...Array.from(contaSet).sort()]
+  }
 }
 
 export function getAvailableAccounts() {

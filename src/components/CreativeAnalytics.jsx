@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { fetchCreativeAnalytics, fetchAccounts } from '../services/api'
-import { Palette, Trophy, Medal, Award } from 'lucide-react'
+import { Palette, Trophy, Medal, Award, ExternalLink, ImageOff, Facebook } from 'lucide-react'
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6']
 
@@ -19,10 +19,28 @@ const CustomTooltip = ({ active, payload }) => {
 }
 
 const rankIcons = [
-  { bg: 'bg-amber-500/20', text: 'text-amber-400', label: '1' },
-  { bg: 'bg-gray-400/20', text: 'text-gray-300', label: '2' },
-  { bg: 'bg-orange-500/20', text: 'text-orange-400', label: '3' },
+  { bg: 'bg-amber-500/20', text: 'text-amber-400' },
+  { bg: 'bg-gray-400/20', text: 'text-gray-300' },
+  { bg: 'bg-orange-500/20', text: 'text-orange-400' },
 ]
+
+function Thumbnail({ url, size = 40 }) {
+  if (!url) return (
+    <div className={`w-[${size}px] h-[${size}px] rounded-lg bg-dark-border/30 flex items-center justify-center flex-shrink-0`} style={{ width: size, height: size }}>
+      <ImageOff className="w-4 h-4 text-text-secondary/40" />
+    </div>
+  )
+  return <img src={url} alt="" className="rounded-lg object-cover flex-shrink-0" style={{ width: size, height: size }} />
+}
+
+function DarkpostLink({ url }) {
+  if (!url) return null
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="text-text-secondary hover:text-purple-400 transition-colors" title="Ver no Facebook">
+      <ExternalLink className="w-3.5 h-3.5" />
+    </a>
+  )
+}
 
 export default function CreativeAnalytics({ period, platform }) {
   const [data, setData] = useState(null)
@@ -30,6 +48,7 @@ export default function CreativeAnalytics({ period, platform }) {
   const [conta, setConta] = useState('todas')
   const [contas, setContas] = useState(['todas'])
   const [sortBy, setSortBy] = useState('vendas')
+  const [onlyLinked, setOnlyLinked] = useState(true)
 
   useEffect(() => { fetchAccounts().then(acc => { if (acc) setContas(acc) }) }, [])
 
@@ -38,10 +57,11 @@ export default function CreativeAnalytics({ period, platform }) {
     fetchCreativeAnalytics(period, platform, conta).then(d => { setData(d); setLoading(false) })
   }, [period?.preset, period?.since, period?.until, platform, conta])
 
-  if (loading || !data) return <div className="text-text-secondary text-center py-12">Carregando...</div>
+  if (loading || !data) return <div className="text-text-secondary text-center py-12">Carregando criativos do Facebook...</div>
   if (!data.criativos?.length) return <div className="text-text-secondary text-center py-12">Nenhum criativo encontrado. Os criativos vem do campo utm_content.</div>
 
-  const sorted = [...data.criativos].sort((a, b) => b[sortBy] - a[sortBy])
+  const filtered = onlyLinked ? data.criativos.filter(c => c.linkedToMeta) : data.criativos
+  const sorted = [...filtered].sort((a, b) => b[sortBy] - a[sortBy])
   const top10 = sorted.slice(0, 10)
   const chartData = top10.map(c => ({ ...c, nomeShort: c.nome.length > 25 ? c.nome.substring(0, 22) + '...' : c.nome }))
 
@@ -55,10 +75,23 @@ export default function CreativeAnalytics({ period, platform }) {
           </div>
           <div>
             <h2 className="text-lg font-bold text-text-primary">Performance de Criativos</h2>
-            <p className="text-xs text-text-secondary">{data.criativos.length} criativos encontrados</p>
+            <p className="text-xs text-text-secondary">{data.matchedCount || 0} vinculados ao Facebook de {data.totalCreatives || data.criativos.length}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Filtro Facebook */}
+          <button
+            onClick={() => setOnlyLinked(!onlyLinked)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              onlyLinked
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'bg-dark/60 text-text-secondary border border-dark-border/40'
+            }`}
+          >
+            <Facebook className="w-3.5 h-3.5" />
+            Apenas Facebook
+          </button>
+
           {contas.length > 1 && (
             <div className="flex bg-dark/60 rounded-xl border border-dark-border/40 p-0.5">
               {contas.map(c => (
@@ -81,18 +114,22 @@ export default function CreativeAnalytics({ period, platform }) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-purple-600/15 to-purple-900/5 rounded-2xl p-4 border border-purple-500/20">
           <p className="text-xs text-text-secondary font-semibold uppercase tracking-wider">Criativos</p>
-          <p className="text-2xl font-extrabold text-purple-400 mt-1">{data.criativos.length}</p>
+          <p className="text-2xl font-extrabold text-purple-400 mt-1">{filtered.length}</p>
         </div>
         <div className="bg-gradient-to-br from-cyan-600/15 to-cyan-900/5 rounded-2xl p-4 border border-cyan-500/20">
           <p className="text-xs text-text-secondary font-semibold uppercase tracking-wider">Vendas</p>
-          <p className="text-2xl font-extrabold text-cyan-400 mt-1">{data.totalVendas.toLocaleString('pt-BR')}</p>
+          <p className="text-2xl font-extrabold text-cyan-400 mt-1">{filtered.reduce((s, c) => s + c.vendas, 0).toLocaleString('pt-BR')}</p>
         </div>
         <div className="bg-gradient-to-br from-emerald-600/15 to-emerald-900/5 rounded-2xl p-4 border border-emerald-500/20">
           <p className="text-xs text-text-secondary font-semibold uppercase tracking-wider">Receita</p>
-          <p className="text-2xl font-extrabold text-success mt-1">R$ {(data.totalReceita / 1000).toFixed(1)}k</p>
+          <p className="text-2xl font-extrabold text-success mt-1">R$ {(filtered.reduce((s, c) => s + c.receita, 0) / 1000).toFixed(1)}k</p>
+        </div>
+        <div className="bg-gradient-to-br from-blue-600/15 to-blue-900/5 rounded-2xl p-4 border border-blue-500/20">
+          <p className="text-xs text-text-secondary font-semibold uppercase tracking-wider">Vinculados FB</p>
+          <p className="text-2xl font-extrabold text-blue-400 mt-1">{data.matchedCount || 0}</p>
         </div>
       </div>
 
@@ -106,12 +143,17 @@ export default function CreativeAnalytics({ period, platform }) {
                   {i === 0 ? <Trophy className="w-4 h-4" /> : i === 1 ? <Medal className="w-4 h-4" /> : <Award className="w-4 h-4" />}
                 </div>
                 <span className="text-xs text-text-secondary font-semibold uppercase">{i === 0 ? 'Ouro' : i === 1 ? 'Prata' : 'Bronze'}</span>
+                <DarkpostLink url={c.darkpostUrl} />
               </div>
-              <p className="text-sm font-bold text-text-primary truncate mb-3">{c.nome}</p>
+              <div className="flex items-center gap-3 mb-3">
+                <Thumbnail url={c.thumbnailUrl} size={48} />
+                <p className="text-sm font-bold text-text-primary truncate flex-1">{c.nome}</p>
+              </div>
               <div className="space-y-1.5">
                 <div className="flex justify-between"><span className="text-xs text-text-secondary">Vendas</span><span className="text-xs font-bold text-text-primary">{c.vendas}</span></div>
                 <div className="flex justify-between"><span className="text-xs text-text-secondary">Receita</span><span className="text-xs font-bold text-success">R$ {c.receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
                 <div className="flex justify-between"><span className="text-xs text-text-secondary">Ticket</span><span className="text-xs font-bold text-cyan-400">R$ {c.ticketMedio.toFixed(2)}</span></div>
+                {c.metaSpend > 0 && <div className="flex justify-between"><span className="text-xs text-text-secondary">Invest.</span><span className="text-xs font-bold text-amber-400">R$ {c.metaSpend.toFixed(2)}</span></div>}
                 <div className="flex justify-between"><span className="text-xs text-text-secondary">OB</span><span className="text-xs font-bold text-purple-400">{c.taxaOB}%</span></div>
               </div>
             </div>
@@ -147,12 +189,15 @@ export default function CreativeAnalytics({ period, platform }) {
             <thead>
               <tr className="bg-gradient-to-r from-purple-600/20 to-purple-800/10">
                 <th className="py-2.5 px-3 text-left font-semibold text-purple-200 uppercase tracking-wider">#</th>
+                <th className="py-2.5 px-3 text-left font-semibold text-purple-200 uppercase tracking-wider">Preview</th>
                 <th className="py-2.5 px-3 text-left font-semibold text-purple-200 uppercase tracking-wider">Criativo</th>
                 <th className="py-2.5 px-3 text-right font-semibold text-purple-200 uppercase tracking-wider cursor-pointer" onClick={() => setSortBy('vendas')}>Vendas</th>
                 <th className="py-2.5 px-3 text-right font-semibold text-purple-200 uppercase tracking-wider cursor-pointer" onClick={() => setSortBy('receita')}>Receita</th>
                 <th className="py-2.5 px-3 text-right font-semibold text-purple-200 uppercase tracking-wider">%</th>
                 <th className="py-2.5 px-3 text-right font-semibold text-purple-200 uppercase tracking-wider cursor-pointer" onClick={() => setSortBy('ticketMedio')}>Ticket</th>
                 <th className="py-2.5 px-3 text-right font-semibold text-purple-200 uppercase tracking-wider cursor-pointer" onClick={() => setSortBy('taxaOB')}>OB%</th>
+                <th className="py-2.5 px-3 text-right font-semibold text-purple-200 uppercase tracking-wider">Invest.</th>
+                <th className="py-2.5 px-3 text-center font-semibold text-purple-200 uppercase tracking-wider">Link</th>
               </tr>
             </thead>
             <tbody>
@@ -165,12 +210,19 @@ export default function CreativeAnalytics({ period, platform }) {
                       <span className="text-text-secondary text-xs ml-1.5">{i + 1}</span>
                     )}
                   </td>
-                  <td className="py-2.5 px-3 font-medium text-text-primary max-w-[300px] truncate">{c.nome}</td>
+                  <td className="py-2.5 px-3">
+                    <Thumbnail url={c.thumbnailUrl} size={32} />
+                  </td>
+                  <td className="py-2.5 px-3 font-medium text-text-primary max-w-[250px] truncate">{c.nome}</td>
                   <td className="py-2.5 px-3 text-right font-semibold text-text-primary">{c.vendas}</td>
                   <td className="py-2.5 px-3 text-right text-success">R$ {c.receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                   <td className="py-2.5 px-3 text-right text-text-secondary">{c.pctVendas}%</td>
                   <td className="py-2.5 px-3 text-right text-cyan-400">R$ {c.ticketMedio.toFixed(2)}</td>
                   <td className={`py-2.5 px-3 text-right font-semibold ${c.taxaOB > 30 ? 'text-success' : c.taxaOB > 15 ? 'text-warning' : 'text-text-secondary'}`}>{c.taxaOB}%</td>
+                  <td className="py-2.5 px-3 text-right text-amber-400">{c.metaSpend > 0 ? `R$ ${c.metaSpend.toFixed(2)}` : '-'}</td>
+                  <td className="py-2.5 px-3 text-center">
+                    <DarkpostLink url={c.darkpostUrl} />
+                  </td>
                 </tr>
               ))}
             </tbody>
