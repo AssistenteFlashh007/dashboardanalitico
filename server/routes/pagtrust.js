@@ -13,8 +13,8 @@ router.post('/webhook', (req, res) => {
                 req.query.token ||
                 req.body?.token
 
-  // Log TUDO que chega pra debug
-  console.log(`[Pagtrust Webhook] Request recebido! Token: ${token || 'nenhum'} | Method: ${req.method} | Body keys: ${Object.keys(req.body || {}).join(',')}`)
+  // Log TUDO que chega pra debug (v2)
+  console.log(`[Pagtrust Webhook] Request recebido! Token: ${token || 'nenhum'} | Body keys: ${Object.keys(req.body || {}).join(',')}`)
 
   if (!validateToken(token)) {
     console.log(`[Pagtrust Webhook] Token REJEITADO. Headers:`, JSON.stringify(req.headers).substring(0, 500))
