@@ -29,35 +29,57 @@ router.post('/webhook', (req, res) => {
 
   addEvent(event)
 
-  // Pagtrust V2 pode enviar status como string em português ou inglês
-  const status = (event.status || event.purchase?.status || '').toLowerCase()
-  const type = (event.type || '').toLowerCase()
-  const isSale = status === 'approved' || status === 'aprovado' ||
-                 type === 'purchase_approved' || type === 'approved' ||
-                 status === 'paid' || status === 'pago'
+  // Pagtrust V2: dados estao em event.data ou direto no event
+  const d = event.data || event
+  const purchaseData = d.purchase || event.purchase || {}
+  const purchaseStatus = (purchaseData.status || event.status || d.status || '').toUpperCase()
+  const eventType = (event.event || event.type || '').toUpperCase()
+
+  const isSale = purchaseStatus === 'APPROVED' || purchaseStatus === 'APROVADO' ||
+                 eventType === 'PURCHASE_APPROVED' || eventType === 'APPROVED' ||
+                 purchaseStatus === 'PAID' || purchaseStatus === 'PAGO'
 
   if (isSale) {
-    const utm = extractUtmFromPagtrust(event)
+    const origin = purchaseData.origin || d.origin || {}
+    const utm = {
+      utm_source: origin.utmsource || origin.utm_source || origin.src || null,
+      utm_medium: origin.utmmedium ? origin.utmmedium.split('|')[0].trim() : null,
+      utm_campaign: origin.utmcampaign ? origin.utmcampaign.split('|')[0].trim() : null,
+      utm_content: origin.content ? origin.content.split('|')[0].trim() : null,
+      utm_term: origin.term || null,
+      fbclid: origin.fbclid || null,
+      fbp: null,
+      gclid: origin.gclid || null,
+    }
 
-    // Pagtrust V2 pode ter estruturas diferentes
-    const produto = event.product?.name || event.productName || event.produto ||
-                    event.purchase?.product?.name || event.items?.[0]?.name || 'Produto Pagtrust'
-    const valor = event.purchase?.price || event.price || event.amount || event.valor ||
-                  event.purchase?.amount || event.items?.[0]?.price || 0
-    const comprador = event.buyer?.name || event.buyerName || event.comprador ||
-                      event.customer?.name || ''
-    const email = event.buyer?.email || event.buyerEmail ||
-                  event.customer?.email || ''
+    // Pagtrust V2: produto em data.product.name
+    const produto = d.product?.name || event.product?.name || d.productName || 'Produto Pagtrust'
+    const priceObj = purchaseData.price || purchaseData.full_price || {}
+    const valor = priceObj.value || priceObj.price || purchaseData.price || event.price || event.amount || 0
+    const buyer = d.buyer || event.buyer || {}
+    const comprador = buyer.name || buyer.buyerName || ''
+    const email = buyer.email || buyer.buyerEmail || ''
+    const checkout = purchaseData.checkout || {}
+    const funnel = purchaseData.funnel || {}
+    const offer = purchaseData.offer || {}
+    const isOB = purchaseData.order_bump?.is_order_bump || false
+    const isUpsell = purchaseData.upsell?.is_upsell || false
 
     addSaleWithUtm({
-      id: event.id || event.transaction_id || event.purchase?.id || Date.now(),
+      id: event.id || purchaseData.transaction || Date.now(),
       plataforma: 'Pagtrust',
       produto,
       valor: typeof valor === 'number' ? valor : parseFloat(String(valor).replace(',', '.')) || 0,
-      data: event.purchase?.approved_date || event.approved_date || event.date || new Date().toISOString(),
+      data: purchaseData.approved_date ? new Date(purchaseData.approved_date).toISOString() : new Date().toISOString(),
       comprador,
       email,
       utm,
+      orderbump: isOB,
+      upsell: isUpsell,
+      checkout: checkout.name || null,
+      funil: funnel.name || null,
+      oferta: offer.name || null,
+      metodo_pagamento: purchaseData.payment?.type || null,
     })
   }
 
