@@ -61,10 +61,10 @@ router.post('/webhook', (req, res) => {
           gclid: origin.gclid || null,
         }
 
-        // Preco: Pagtrust V2 envia em reais (nao centavos)
-        const priceObj = purchaseData.full_price || {}
+        // Preco: usar price.price (comissao/liquido) em vez de full_price.value (bruto)
         const priceAlt = purchaseData.price || {}
-        const valor = priceObj.value || priceAlt.price || priceAlt.value || 0
+        const priceObj = purchaseData.full_price || {}
+        const valor = priceAlt.price || priceAlt.value || priceObj.value || 0
 
         const buyer = d.buyer || event.buyer || {}
         const checkout = purchaseData.checkout || {}

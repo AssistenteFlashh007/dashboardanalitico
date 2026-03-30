@@ -35,14 +35,20 @@ router.post('/webhook', (req, res) => {
 
         const utm = extractUtmFromHubla(event)
 
-        // Valor: invoice.amount e objeto {totalCents, subtotalCents}
-        const rawAmount = event.event?.invoice?.amount
+        // Valor: usar comissao do seller (receivers) em vez do bruto
+        const receivers = event.event?.invoice?.receivers || []
+        const seller = receivers.find(r => r.role === 'seller')
         let valor = 0
-        if (rawAmount && typeof rawAmount === 'object') {
-          valor = (rawAmount.totalCents || rawAmount.subtotalCents || 0) / 100
-        } else if (typeof rawAmount === 'number') {
-          // Hubla sempre envia centavos quando e numero
-          valor = rawAmount / 100
+        if (seller?.totalCents) {
+          valor = seller.totalCents / 100
+        } else {
+          // Fallback pro bruto se nao achar seller
+          const rawAmount = event.event?.invoice?.amount
+          if (rawAmount && typeof rawAmount === 'object') {
+            valor = (rawAmount.totalCents || rawAmount.subtotalCents || 0) / 100
+          } else if (typeof rawAmount === 'number') {
+            valor = rawAmount / 100
+          }
         }
 
         // Produto
