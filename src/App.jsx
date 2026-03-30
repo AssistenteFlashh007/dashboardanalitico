@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Wallet, TrendingUp, Target, BarChart2, DollarSign, Receipt, LayoutDashboard, Megaphone, GitBranch, Palette, FlaskConical, Users, Database, ChevronLeft, ChevronRight, Settings } from 'lucide-react'
+import { Wallet, TrendingUp, Target, BarChart2, DollarSign, Receipt, LayoutDashboard, Megaphone, GitBranch, Palette, FlaskConical, Users, Database, ChevronLeft, ChevronRight, Settings, Radio } from 'lucide-react'
 import Header from './components/Header'
 import KpiCard from './components/KpiCard'
 import TrafficChart from './components/TrafficChart'
@@ -17,6 +17,7 @@ import Debriefing from './components/Debriefing'
 import Segments from './components/Segments'
 import WhatsAppReport from './components/WhatsAppReport'
 import DataSources from './components/DataSources'
+import Webinario from './components/Webinario'
 import useDashboardData from './hooks/useDashboardData'
 
 const navItems = [
@@ -24,6 +25,7 @@ const navItems = [
   { id: 'campanhas', label: 'Campanhas', icon: Megaphone },
   { id: 'funil', label: 'Funil', icon: GitBranch },
   { id: 'criativos', label: 'Criativos', icon: Palette },
+  { id: 'webinario', label: 'Webnario', icon: Radio },
   { id: 'abtesting', label: 'Testes A/B', icon: FlaskConical },
   { id: 'segmentos', label: 'Segmentos', icon: Users },
 ]
@@ -191,6 +193,13 @@ export default function App() {
         {activeTab === 'segmentos' && (
           <main className="p-6 overflow-y-auto">
             <Segments period={period} />
+          </main>
+        )}
+
+        {/* Webinario */}
+        {activeTab === 'webinario' && (
+          <main className="p-6 overflow-y-auto">
+            <Webinario />
           </main>
         )}
 

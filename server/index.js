@@ -10,6 +10,7 @@ import attributionRoutes from './routes/attribution.js'
 import importRoutes from './routes/import.js'
 import analyticsRoutes from './routes/analytics.js'
 import abtestsRoutes from './routes/abtests.js'
+import webinarioRoutes from './routes/webinario.js'
 
 dotenv.config()
 
@@ -28,6 +29,7 @@ app.use('/api/attribution', attributionRoutes)
 app.use('/api/import', importRoutes)
 app.use('/api/analytics', analyticsRoutes)
 app.use('/api/abtests', abtestsRoutes)
+app.use('/api/webinario', webinarioRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => {
