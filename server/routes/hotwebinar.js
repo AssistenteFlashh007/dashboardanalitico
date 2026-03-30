@@ -60,21 +60,36 @@ router.get('/stats', async (req, res) => {
 
   try {
     const result = {}
+    const errors = []
     const dateRange = since && until ? { since, until } : null
 
     if (type === 'alunos' || type === 'ambos') {
       if (config.webinarAlunos) {
-        result.alunos = await fetchWebinarStats(config.webinarAlunos, config.token, dateRange)
+        const stats = await fetchWebinarStats(config.webinarAlunos, config.token, dateRange)
+        if (stats?.error) {
+          errors.push(`Alunos: ${stats.message}`)
+        } else {
+          result.alunos = stats
+        }
       }
     }
 
     if (type === 'naoAlunos' || type === 'ambos') {
       if (config.webinarNaoAlunos) {
-        result.naoAlunos = await fetchWebinarStats(config.webinarNaoAlunos, config.token, dateRange)
+        const stats = await fetchWebinarStats(config.webinarNaoAlunos, config.token, dateRange)
+        if (stats?.error) {
+          errors.push(`Nao Alunos: ${stats.message}`)
+        } else {
+          result.naoAlunos = stats
+        }
       }
     }
 
-    res.json({ success: true, data: result })
+    if (errors.length > 0 && !result.alunos && !result.naoAlunos) {
+      return res.json({ success: false, error: errors.join(' | ') })
+    }
+
+    res.json({ success: true, data: result, warnings: errors.length > 0 ? errors : undefined })
   } catch (err) {
     console.error('[HotWebinar Route] Erro:', err.message)
     res.json({ success: false, error: err.message })

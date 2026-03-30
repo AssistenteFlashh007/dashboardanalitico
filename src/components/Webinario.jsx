@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Radio, Users, MessageSquare, UserPlus, Eye, Megaphone, ShoppingCart, DollarSign, ArrowDown, Percent, Edit3, Save, X } from 'lucide-react'
+import { Radio, Users, MessageSquare, UserPlus, Eye, Megaphone, ShoppingCart, DollarSign, ArrowDown, Percent, Edit3, Save, X, AlertTriangle } from 'lucide-react'
 
 const API_BASE = '/api'
 
@@ -133,6 +133,7 @@ export default function Webinario() {
   const [webinarName, setWebinarName] = useState('Lancamento Atual')
   const [editingName, setEditingName] = useState(false)
   const [hotwebinarConnected, setHotwebinarConnected] = useState(false)
+  const [hotwebinarError, setHotwebinarError] = useState(null)
   const [localPeriod, setLocalPeriod] = useState({ preset: 'today' })
   const [customSince, setCustomSince] = useState('')
   const [customUntil, setCustomUntil] = useState('')
@@ -158,6 +159,7 @@ export default function Webinario() {
       }
 
       // Carregar dados do HotWebinar automaticamente
+      setHotwebinarError(null)
       try {
         const dateParam = localPeriod?.since && localPeriod?.until
           ? `&since=${localPeriod.since}&until=${localPeriod.until}`
@@ -171,27 +173,39 @@ export default function Webinario() {
             if (hw.alunos) {
               manualData.alunos = {
                 ...manualData.alunos,
-                adquiridos: hw.alunos.visitantes || manualData.alunos.adquiridos,
-                iniciaram: hw.alunos.acessaram || manualData.alunos.iniciaram,
-                pico: hw.alunos.peakAudience || manualData.alunos.pico,
-                pitch: hw.alunos.pitch || manualData.alunos.pitch,
-                clicaram: hw.alunos.clicouOferta || manualData.alunos.clicaram,
+                adquiridos: hw.alunos.visitantes ?? manualData.alunos.adquiridos,
+                iniciaram: hw.alunos.acessaram ?? manualData.alunos.iniciaram,
+                pico: hw.alunos.peakAudience ?? manualData.alunos.pico,
+                pitch: hw.alunos.pitch ?? manualData.alunos.pitch,
+                clicaram: hw.alunos.clicouOferta ?? manualData.alunos.clicaram,
               }
             }
             if (hw.naoAlunos) {
               manualData.naoAlunos = {
                 ...manualData.naoAlunos,
-                adquiridos: hw.naoAlunos.visitantes || manualData.naoAlunos.adquiridos,
-                iniciaram: hw.naoAlunos.acessaram || manualData.naoAlunos.iniciaram,
-                pico: hw.naoAlunos.peakAudience || manualData.naoAlunos.pico,
-                pitch: hw.naoAlunos.pitch || manualData.naoAlunos.pitch,
-                clicaram: hw.naoAlunos.clicouOferta || manualData.naoAlunos.clicaram,
+                adquiridos: hw.naoAlunos.visitantes ?? manualData.naoAlunos.adquiridos,
+                iniciaram: hw.naoAlunos.acessaram ?? manualData.naoAlunos.iniciaram,
+                pico: hw.naoAlunos.peakAudience ?? manualData.naoAlunos.pico,
+                pitch: hw.naoAlunos.pitch ?? manualData.naoAlunos.pitch,
+                clicaram: hw.naoAlunos.clicouOferta ?? manualData.naoAlunos.clicaram,
               }
             }
             setHotwebinarConnected(true)
+            if (hwJson.warnings) {
+              setHotwebinarError(hwJson.warnings.join(' | '))
+            }
+          } else if (!hwJson.success) {
+            setHotwebinarError(hwJson.error || 'Erro ao buscar dados do HotWebinar')
+            setHotwebinarConnected(false)
           }
+        } else {
+          setHotwebinarError(`Erro HTTP ${hwRes.status} ao conectar com HotWebinar`)
+          setHotwebinarConnected(false)
         }
-      } catch { }
+      } catch (err) {
+        setHotwebinarError(`Falha na conexao: ${err.message}`)
+        setHotwebinarConnected(false)
+      }
 
       setData(manualData)
       setWebinarName(name)
@@ -311,6 +325,20 @@ export default function Webinario() {
         {loading && <span className="text-xs text-text-secondary animate-pulse">Carregando...</span>}
       </div>
 
+      {/* Erro HotWebinar */}
+      {hotwebinarError && (
+        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-red-400">Erro HotWebinar</p>
+            <p className="text-xs text-red-300/80">{hotwebinarError}</p>
+          </div>
+          <button onClick={() => setHotwebinarError(null)} className="text-red-400/60 hover:text-red-400">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-purple-600/15 to-purple-900/5 rounded-2xl p-4 border border-purple-500/20">
@@ -401,12 +429,12 @@ export default function Webinario() {
             { name: 'ManyChat', desc: 'Mensagens + Grupo (Alunos)', status: 'pendente' },
             { name: 'SendFlow', desc: 'Grupo WhatsApp', status: 'pendente' },
             { name: 'InLead', desc: 'Leads Nao Alunos', status: 'pendente' },
-            { name: 'HotWebnar', desc: 'Participantes + Pico ao Vivo', status: hotwebinarConnected ? 'conectado' : 'pendente' },
+            { name: 'HotWebnar', desc: 'Participantes + Pico ao Vivo', status: hotwebinarConnected ? 'conectado' : hotwebinarError ? 'erro' : 'pendente' },
           ].map(src => (
             <div key={src.name} className="bg-dark/40 rounded-xl p-3 border border-dark-border/30">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-text-primary">{src.name}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded ${src.status === 'conectado' ? 'bg-success/15 text-success' : 'bg-amber-500/15 text-amber-400'}`}>
+                <span className={`text-xs px-1.5 py-0.5 rounded ${src.status === 'conectado' ? 'bg-success/15 text-success' : src.status === 'erro' ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'}`}>
                   {src.status}
                 </span>
               </div>

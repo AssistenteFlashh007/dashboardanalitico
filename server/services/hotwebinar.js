@@ -26,7 +26,9 @@ function getMetricCount(metrics, id) {
 }
 
 export async function fetchWebinarStats(webinarId, token, dateRange) {
-  if (!webinarId || !token) return null
+  if (!webinarId || !token) {
+    return { error: true, message: 'WebinarId ou token nao configurado' }
+  }
 
   try {
     let url = `${API_BASE}/stats/${webinarId}`
@@ -39,13 +41,19 @@ export async function fetchWebinarStats(webinarId, token, dateRange) {
     })
 
     if (!res.ok) {
-      console.warn(`[HotWebinar] API error: ${res.status}`)
-      return null
+      const status = res.status
+      let message = `API retornou status ${status}`
+      if (status === 401 || status === 403) message = 'Token expirado ou invalido'
+      else if (status === 404) message = 'Webinar nao encontrado (ID invalido)'
+      console.warn(`[HotWebinar] API error: ${status}`)
+      return { error: true, status, message }
     }
 
     const data = await res.json()
     const payload = data?.payload
-    if (!payload) return null
+    if (!payload) {
+      return { error: true, message: 'Resposta da API sem payload' }
+    }
 
     const metrics = payload.metrics || []
     const videoMetrics = payload.videoMetrics || []
@@ -71,6 +79,6 @@ export async function fetchWebinarStats(webinarId, token, dateRange) {
     }
   } catch (err) {
     console.error(`[HotWebinar] Erro ao buscar stats:`, err.message)
-    return null
+    return { error: true, message: err.message }
   }
 }
