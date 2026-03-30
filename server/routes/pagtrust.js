@@ -32,14 +32,15 @@ router.post('/webhook', (req, res) => {
   // Pagtrust V2: dados estao em event.data ou direto no event
   const d = event.data || event
   const purchaseData = d.purchase || event.purchase || {}
-  const purchaseStatus = (purchaseData.status || event.status || d.status || '').toUpperCase()
-  const eventType = (event.event || event.type || '').toUpperCase()
+  const purchaseStatus = String(purchaseData.status || event.status || d.status || '').toUpperCase()
+  const eventType = String(event.event || event.type || '').toUpperCase()
 
   const isSale = purchaseStatus === 'APPROVED' || purchaseStatus === 'APROVADO' ||
                  eventType === 'PURCHASE_APPROVED' || eventType === 'APPROVED' ||
                  purchaseStatus === 'PAID' || purchaseStatus === 'PAGO'
 
   if (isSale) {
+    try {
     const origin = purchaseData.origin || d.origin || {}
     const utm = {
       utm_source: origin.utmsource || origin.utm_source || origin.src || null,
@@ -81,9 +82,12 @@ router.post('/webhook', (req, res) => {
       oferta: offer.name || null,
       metodo_pagamento: purchaseData.payment?.type || null,
     })
+    } catch (err) {
+      console.error(`[Pagtrust Webhook] ERRO ao salvar venda:`, err.message)
+    }
   }
 
-  console.log(`[Pagtrust Webhook] Evento: ${event.type || status || 'desconhecido'}${isSale ? ' (+ UTM salvo)' : ''}`)
+  console.log(`[Pagtrust Webhook] Evento: ${event.event || eventType || 'desconhecido'}${isSale ? ' (+ UTM salvo)' : ''}`)
   res.status(200).json({ received: true })
 })
 
