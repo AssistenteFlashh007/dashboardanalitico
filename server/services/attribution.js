@@ -12,11 +12,13 @@ const MAX_SALES = 100000
 function normalizeValor(val) {
   if (typeof val === 'number') return val
   if (val && typeof val === 'object') {
-    const cents = val.totalCents || val.amount || val.subtotalCents || 0
-    return cents / 100
+    const cents = val.totalCents || val.subtotalCents || 0
+    return typeof cents === 'number' ? cents / 100 : 0
   }
   if (typeof val === 'string') {
-    const num = parseFloat(val.replace(/[R$\s,]/g, '').replace(',', '.'))
+    // Formato brasileiro: R$ 1.297,50 -> 1297.50
+    const cleaned = val.replace(/[R$US\s]/g, '').replace(/\./g, '').replace(',', '.')
+    const num = parseFloat(cleaned)
     return isNaN(num) ? 0 : num
   }
   return 0
@@ -25,6 +27,23 @@ function normalizeValor(val) {
 // Carregar vendas do arquivo ao iniciar e normalizar valores
 let salesWithUtm = loadFromDisk().map(s => ({ ...s, valor: normalizeValor(s.valor) }))
 console.log(`📂 ${salesWithUtm.length} vendas carregadas do disco`)
+
+// Rebuild dedup maps from disk data to survive restarts
+function rebuildDedupMaps() {
+  global._hubla_dedup = {}
+  global._pagtrust_dedup = {}
+  for (const sale of salesWithUtm) {
+    if (sale.plataforma === 'Hubla' && sale.id) {
+      global._hubla_dedup[sale.id] = true
+    }
+    if (sale.plataforma === 'Pagtrust' && sale.id) {
+      const key = `${sale.id}_${sale.produto || ''}`
+      global._pagtrust_dedup[key] = true
+    }
+  }
+  console.log(`🔒 Dedup maps: Hubla=${Object.keys(global._hubla_dedup).length} | Pagtrust=${Object.keys(global._pagtrust_dedup).length}`)
+}
+rebuildDedupMaps()
 
 function loadFromDisk() {
   try {
@@ -54,6 +73,11 @@ function saveToDisk() {
 }
 
 export function addSaleWithUtm(sale) {
+  // Dedup: nao salvar se ID ja existe
+  if (sale.id && salesWithUtm.some(s => s.id === sale.id && s.produto === sale.produto)) {
+    console.log(`[Attribution] Venda duplicada ignorada (disco): ${sale.id} ${sale.produto}`)
+    return
+  }
   salesWithUtm.unshift({ ...sale, valor: normalizeValor(sale.valor) })
   if (salesWithUtm.length > MAX_SALES) {
     salesWithUtm.length = MAX_SALES
@@ -70,12 +94,12 @@ export function getAllSalesWithUtm() {
   return salesWithUtm
 }
 
-// Converter data para string YYYY-MM-DD no fuso de Brasília (UTC-3)
+// Converter data para string YYYY-MM-DD no fuso de Brasilia
 function toDateBR(date) {
   const d = new Date(date)
-  // Subtrair 3 horas para fuso de Brasília
-  d.setHours(d.getHours() - 3)
-  return d.toISOString().split('T')[0]
+  if (isNaN(d.getTime())) return null
+  // Usar toLocaleString com timezone explicito
+  return d.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
 }
 
 // Filtrar vendas por período (usando fuso de Brasília)

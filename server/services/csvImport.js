@@ -39,7 +39,8 @@ function findColumn(headers, fieldNames) {
 
 function parseValue(val) {
   if (val == null || val === '') return 0
-  const cleaned = String(val).replace(/[R$US\s]/g, '').replace(',', '.')
+  // Formato brasileiro: R$ 1.297,50 -> 1297.50
+  const cleaned = String(val).replace(/[R$US\s]/g, '').replace(/\./g, '').replace(',', '.')
   const num = parseFloat(cleaned)
   return isNaN(num) ? 0 : num
 }

@@ -25,12 +25,10 @@ export function validateToken(token) {
 }
 
 export function getSalesSummary() {
-  // Eventos de invoice/pagamento confirmado
+  // Somente pagamentos confirmados (nao invoice.created que e pre-pagamento)
   const vendas = events.filter(e =>
-    e.type === 'invoice.payment_confirmed' ||
-    e.type === 'invoice.created' ||
-    e.type === 'subscription.activated' ||
-    (e.event?.invoice?.status === 'paid')
+    e.type === 'invoice.payment_succeeded' ||
+    e.type === 'invoice.payment_confirmed'
   )
 
   const reembolsos = events.filter(e =>
@@ -93,11 +91,15 @@ function extractValue(event) {
   ]
 
   for (const v of paths) {
-    if (v != null) {
+    if (v != null && typeof v === 'object') {
+      // Objeto com totalCents — sempre dividir por 100
+      const cents = v.totalCents || v.subtotalCents || 0
+      if (cents > 0) return cents / 100
+    }
+    if (v != null && typeof v !== 'object') {
       const num = typeof v === 'number' ? v : parseFloat(v)
       if (!isNaN(num) && num > 0) {
-        // Se valor > 1000, provavelmente está em centavos
-        return num > 1000 ? num / 100 : num
+        return num
       }
     }
   }
