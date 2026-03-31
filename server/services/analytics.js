@@ -23,6 +23,23 @@ function resolveDates(opts) {
   }
 }
 
+export function getPreviousPeriod(dateOpts) {
+  const { since, until } = resolveDates(dateOpts)
+  if (!since || !until) return null
+
+  const start = new Date(since + 'T12:00:00')
+  const end = new Date(until + 'T12:00:00')
+  const days = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1
+
+  const prevEnd = new Date(start)
+  prevEnd.setDate(prevEnd.getDate() - 1)
+  const prevStart = new Date(prevEnd)
+  prevStart.setDate(prevStart.getDate() - days + 1)
+
+  const fmt = d => d.toISOString().split('T')[0]
+  return { since: fmt(prevStart), until: fmt(prevEnd) }
+}
+
 function filterSales(sales, { dateOpts, platform, conta }) {
   let filtered = sales
   const { since, until } = resolveDates(dateOpts)

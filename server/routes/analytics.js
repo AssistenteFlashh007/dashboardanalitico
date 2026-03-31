@@ -1,15 +1,25 @@
 import { Router } from 'express'
-import { getFunnelAnalytics, getCreativeAnalytics, getAvailableAccounts } from '../services/analytics.js'
+import { getFunnelAnalytics, getCreativeAnalytics, getAvailableAccounts, getPreviousPeriod } from '../services/analytics.js'
 
 const router = Router()
 
 // GET /api/analytics/funnel?period=this_month&platform=todas&conta=todas
 router.get('/funnel', async (req, res) => {
   try {
-    const { period, since, until, platform, conta } = req.query
+    const { period, since, until, platform, conta, compare } = req.query
     const dateOpts = since && until ? { since, until } : { period: period || 'this_month' }
-    const data = await getFunnelAnalytics({ dateOpts, platform: platform || 'todas', conta: conta || 'todas' })
-    res.json({ success: true, data })
+    const baseOpts = { dateOpts, platform: platform || 'todas', conta: conta || 'todas' }
+    const data = await getFunnelAnalytics(baseOpts)
+
+    let prev = null
+    if (compare === 'true') {
+      const prevPeriod = getPreviousPeriod(dateOpts)
+      if (prevPeriod) {
+        prev = await getFunnelAnalytics({ ...baseOpts, dateOpts: prevPeriod })
+      }
+    }
+
+    res.json({ success: true, data, prev })
   } catch (error) {
     console.error('[Funnel Analytics]', error.message)
     res.status(500).json({ success: false, error: error.message })

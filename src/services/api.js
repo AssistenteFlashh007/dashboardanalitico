@@ -60,9 +60,21 @@ export async function fetchAttribution(opts, platform = 'todas') {
 }
 
 // Analytics
-export async function fetchFunnelAnalytics(opts, platform = 'todas', conta = 'todas') {
+export async function fetchFunnelAnalytics(opts, platform = 'todas', conta = 'todas', compare = false) {
   const p = platform !== 'todas' ? `&platform=${platform}` : ''
   const c = conta !== 'todas' ? `&conta=${conta}` : ''
+  const cmp = compare ? '&compare=true' : ''
+  if (compare) {
+    // Retornar { data, prev } quando comparando
+    try {
+      const res = await fetch(`${API_BASE}/analytics/funnel?${buildDateQuery(opts)}${p}${c}${cmp}`)
+      if (!res.ok) return { data: null, prev: null }
+      const json = await res.json()
+      return { data: json.success ? json.data : null, prev: json.prev || null }
+    } catch {
+      return { data: null, prev: null }
+    }
+  }
   return apiFetch(`/analytics/funnel?${buildDateQuery(opts)}${p}${c}`)
 }
 
