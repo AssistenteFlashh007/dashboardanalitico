@@ -207,6 +207,22 @@ export default function Webinario() {
         setHotwebinarConnected(false)
       }
 
+      // Carregar vendas reais (produto Maquina de Salarios + UTM webnario)
+      try {
+        const dateParam = localPeriod?.since && localPeriod?.until
+          ? `&since=${localPeriod.since}&until=${localPeriod.until}`
+          : localPeriod?.preset ? `&period=${localPeriod.preset}` : '&period=today'
+        const vendasRes = await fetch(`${API_BASE}/webinario/vendas?${dateParam.replace('&', '')}`)
+        if (vendasRes.ok) {
+          const vendasJson = await vendasRes.json()
+          if (vendasJson.success && vendasJson.total > 0) {
+            // Distribuir vendas no total (sem distinção alunos/naoAlunos por enquanto)
+            manualData.alunos.vendas = vendasJson.total
+            manualData.alunos.receitaVendas = vendasJson.receita
+          }
+        }
+      } catch { }
+
       setData(manualData)
       setWebinarName(name)
     } catch { }
